@@ -295,6 +295,20 @@ $btn-height: 1.8rem;
 .dplayer-wrap {
     width: 100%;
     height: 20rem;
+    /* NOTE DPlayer 会按视频真实比例把内部容器撑高（这里 720x1280 的竖屏源
+       被撑到 1493px，是容器 20rem≈280px 的 5 倍），把标题、点赞按钮、
+       乃至整个评论区都盖在黑色视频层下面。必须把播放器夹在容器内。 */
+    overflow: hidden;
+
+    :deep(.dplayer) {
+        width: 100%;
+        height: 100% !important;
+    }
+
+    /* 保持画面比例、居中留黑边，避免竖屏源被拉伸 */
+    :deep(.dplayer video) {
+        object-fit: contain;
+    }
 }
 
 .introduction-panel {

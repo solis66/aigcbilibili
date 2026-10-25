@@ -263,41 +263,14 @@ onMounted(async () => {
     }
 }
 
+/* NOTE 这里只保留分类条自身的尺寸（它命中 aCarousel 的根元素，scoped 生效）。
+   分类项 .video-category-item、控制器 .video-category-controller 属于 aCarousel 组件内部，
+   写在父组件 scoped 里不会命中，已移入 aCarousel.vue 自己的样式块。 */
 .video-category {
     width: 35rem;
     height: 3rem;
     margin: 1.5rem 1rem;
     z-index: 1;
-}
-
-.video-category-item {
-    padding: 0.6rem;
-    width: auto;
-    max-width: 5rem;
-    height: 1.3rem;
-    margin-left: 0.8rem;
-    margin-right: 0.8rem;
-}
-
-.recommend-labels {
-    color: #052b54a9;
-}
-
-.video-category .video-category-controller {
-    padding: 0.3rem;
-    width: 4rem;
-    height: 2.5rem;
-    border: 1px solid #9ac9fb;
-    background-color: #fff;
-    position: absolute;
-}
-
-.controller-left {
-    left: 1rem;
-}
-
-.controller-right {
-    right: -1rem;
 }
 
 .video-recommend-content .video-recommend-item {

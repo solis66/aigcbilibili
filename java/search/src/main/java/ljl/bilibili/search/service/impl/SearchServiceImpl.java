@@ -31,6 +31,7 @@ import org.elasticsearch.search.SearchHit;
 import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.elasticsearch.search.fetch.subphase.highlight.HighlightBuilder;
 import org.elasticsearch.search.sort.SortOrder;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import javax.annotation.Resource;
 import java.io.IOException;
@@ -49,6 +50,16 @@ public class SearchServiceImpl implements SearchService {
     @Resource
     public RestHighLevelClient client;
     final int size = 20;
+    /**
+     * 相关度分数下限（FIX-19，2026-09-23）。
+     * 原实现是写死字面量 1.0f —— 但 ES 的 BM25 分数量级取决于索引规模，
+     * 在只有个位数文档的新实例上，一条完全匹配的中文标题也只有 ~0.36 分，
+     * 「分数 > 1.0」这个绝对阈值会把**全部**结果滤掉（表现为搜索恒返回空）。
+     * 改为占位符参数化：默认值仍是 1.0（上游线上行为不变），
+     * 本地小数据集在 docker/config/search/application.yml 里覆盖为 0.1。
+     */
+    @Value("${bilibili.search.min-score:1.0}")
+    private float minScore;
     @Resource
     FollowMapper followMapper;
     @Resource
@@ -62,13 +73,13 @@ public class SearchServiceImpl implements SearchService {
         SearchSourceBuilder videoSearchSourceBuilder = new SearchSourceBuilder();
         videoSearchSourceBuilder.query(QueryBuilders.multiMatchQuery(keyword, MULTI_QUERY_VIDEO_NAME, MULTI_QUERY_AUTHOR_NAME, MULTI_QUERY_INTRO)
                 .type(MultiMatchQueryBuilder.Type.MOST_FIELDS));
-        videoSearchSourceBuilder.minScore(1.0f);
+        videoSearchSourceBuilder.minScore(minScore);
         videoSearchSourceBuilder.sort(ORDER_BY_SCORE, SortOrder.DESC);
         videoSearchSourceBuilder.fetchSource(true);
         videoSearchRequest.source(videoSearchSourceBuilder);
         SearchRequest userSearchRequest = new SearchRequest(USER_INDEX_NAME);
         SearchSourceBuilder userSearchSourceBuilder = new SearchSourceBuilder();
-        userSearchSourceBuilder.minScore(1.0f);
+        userSearchSourceBuilder.minScore(minScore);
         userSearchSourceBuilder.query(QueryBuilders.multiMatchQuery(keyword, MULTI_QUERY_NICKNAME, MULTI_QUERY_INTRO)
                 .type(MultiMatchQueryBuilder.Type.MOST_FIELDS));
         userSearchSourceBuilder.sort(ORDER_BY_SCORE, SortOrder.DESC);
@@ -110,7 +121,7 @@ public class SearchServiceImpl implements SearchService {
         SearchSourceBuilder searchSourceBuilder = new SearchSourceBuilder();
         searchSourceBuilder.query(QueryBuilders.multiMatchQuery(keyword, MULTI_QUERY_VIDEO_NAME, MULTI_QUERY_AUTHOR_NAME, MULTI_QUERY_INTRO)
                 .type(MultiMatchQueryBuilder.Type.MOST_FIELDS));
-        searchSourceBuilder.minScore(1.0f);
+        searchSourceBuilder.minScore(minScore);
         if (type == 0) {
             searchSourceBuilder.sort(ORDER_BY_SCORE, SortOrder.DESC);
         } else if (type == 1) {

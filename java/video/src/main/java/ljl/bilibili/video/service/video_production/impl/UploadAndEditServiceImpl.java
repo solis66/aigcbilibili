@@ -28,6 +28,7 @@ import ljl.bilibili.video.vo.request.video_production.UploadPartRequest;
 import ljl.bilibili.video.vo.request.video_production.UploadVideoRequest;
 import ljl.bilibili.video.vo.response.video_production.UploadProcessorResponse;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -74,6 +75,18 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
     RedisTemplate objectRedisTemplate;
 
     /**
+     * 浏览器可见的 minio 对象基地址（FIX-14，2026-09-23 本机实测新增）
+     *   原为字面量 "http://localhost:9000/" —— 该 URL 会**直接写进 video.url / video.cover 并被前端
+     *   当作 <video :src> / <img :src>** 使用，即「浏览器侧地址」而非服务端访问地址。
+     *   本地部署时 minio 的 S3 API 发布在 19000（且不该让浏览器直连 S3 端口），实测播不出来。
+     *   默认值保持原字面量 → 原作者宿主直跑行为不变；容器侧在 docker/config/video/application.yml
+     *   覆盖为 http://localhost:2023/（经前端 nginx 的 /video/、/video-cover/ 反代到 minio）。
+     *   ⚠️ 注意与下面 minio.url（服务端访问地址，容器内为 http://minio:9000）不是同一个东西。
+     */
+    @Value("${minio.file-path:http://localhost:9000/}")
+    private String minioFilePath;
+
+    /**
      * 判断是否恶意文件、上传视频到minio、新增视频与视频数据记录、推送视频动态、发送数据同步消息
      */
     @Override
@@ -83,11 +96,11 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
             Video video = uploadVideoRequest.toEntity();
             LambdaQueryWrapper<Video> queryWrapper = new LambdaQueryWrapper<>();
             String coverFile = uploadVideoRequest.getVideoCover();
-            String url = "http://localhost:9000/video/" + uploadVideoRequest.getUrl();
+            String url = minioFilePath + "video/" + uploadVideoRequest.getUrl();
             video.setUrl(url);
             if (coverFile != null && coverFile != "") {
 //                hasCover=true;
-                String prefixPath = "http://localhost:9000/video-cover/";
+                String prefixPath = minioFilePath + "video-cover/";
                 byte[] decodedBytes = java.util.Base64.getDecoder().decode(coverFile);
 //                ByteArrayInputStream bis = new ByteArrayInputStream(decodedBytes);
                 // 创建ImageInputStream
@@ -249,8 +262,20 @@ public class UploadAndEditServiceImpl implements UploadAndEditService {
      */
     @Override
     public Result<List<String>> uploadPart(UploadPartRequest uploadPartRequest) throws IOException, EncoderException, ServerException, InsufficientDataException, ErrorResponseException, NoSuchAlgorithmException, InvalidKeyException, InvalidResponseException, XmlParserException, InternalException {
-        int commaIndex = uploadPartRequest.getResumableIdentifier().indexOf(',');
-        uploadPartRequest.setResumableIdentifier(uploadPartRequest.getResumableIdentifier().substring(0, commaIndex));
+        // FIX-14（2026-09-23 本机实测新增）：标识符里的逗号是**可选的**。
+        //   原实现无条件 `substring(0, indexOf(','))` —— 而前端 resumable 的 generateUniqueIdentifier
+        //   产出的是 `${name}-${size}-${lastModified}`（**不含逗号**，见 upLoad.vue），
+        //   于是 indexOf 返回 -1 → `substring(0, -1)` 抛 StringIndexOutOfBoundsException，
+        //   被全局异常处理器转成 code 600「寄」→ **任何视频都在第一个分片就投稿失败**。
+        //   实测：identifier 不含逗号 → {"code":600,"msg":"...String index out of range: -1"}；
+        //         含逗号（如 a,b,c）→ code 200 正常。
+        //   处置：仅在「存在逗号且不在首位」时截断，两种格式都能用；对宿主直跑（原作者前端）零影响。
+        String rawIdentifier = uploadPartRequest.getResumableIdentifier();
+        int commaIndex = rawIdentifier.indexOf(',');
+        if (commaIndex > 0) {
+            rawIdentifier = rawIdentifier.substring(0, commaIndex);
+        }
+        uploadPartRequest.setResumableIdentifier(rawIdentifier);
         String resumableIdentifier = uploadPartRequest.getResumableIdentifier();
         String videoName = "";
         String videoCover = "";

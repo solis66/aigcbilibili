@@ -12,7 +12,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 
 import java.util.Map;
 
-@FeignClient(name = "notice",url="http://localhost:30000")
+// url 用占位符：默认值 http://localhost:30000 适配宿主直跑；
+// 容器内由外置配置覆盖为 http://notice:30000（容器里 localhost 指自己，写死会 Connection refused）
+@FeignClient(name = "notice",url = "${service.notice.url:http://localhost:30000}")
 @Component
 public interface SendNoticeClient {
     @PostMapping("/notice/sendDynamicNotice")

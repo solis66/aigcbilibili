@@ -8,20 +8,23 @@
     </p>
   </div> -->
   <div class="main-page">
-    <SearchPanel class="search-box flex-based-container" />
-    <div class="icon-box">
-      <div class="icon-box-content">
-        <div class="item" @click="turnToBigModel()">
-          <el-icon :size="size" :color="color">
-            <ChatDotRound />
-          </el-icon>
-          <span style="margin-left: 10px;">AI助手</span>
-        </div>
-        <div class="item" @click="turnToColumn()">
-          <el-icon :size="size" :color="color">
-            <ChatLineSquare />
-          </el-icon>
-          <span style="margin-left: 10px;">专栏</span>
+    <!-- 搜索框与右侧功能入口放在同一 flex 行内（原先 .icon-box 是绝对定位，会压住搜索按钮，见下方样式注释） -->
+    <div class="head-bar">
+      <SearchPanel class="search-box flex-based-container" />
+      <div class="icon-box">
+        <div class="icon-box-content">
+          <div class="item" @click="turnToBigModel()">
+            <el-icon :size="size" :color="color">
+              <ChatDotRound />
+            </el-icon>
+            <span style="margin-left: 10px;">AI助手</span>
+          </div>
+          <div class="item" @click="turnToColumn()">
+            <el-icon :size="size" :color="color">
+              <ChatLineSquare />
+            </el-icon>
+            <span style="margin-left: 10px;">专栏</span>
+          </div>
         </div>
       </div>
     </div>
@@ -282,6 +285,31 @@ onBeforeUnmount(() => {
   min-width: 33rem;
   height: 6rem;
   z-index: 5;
+  /* 不参与伸缩：搜索框内部是固定宽度的输入框，被挤压会让输入框压到「搜索」按钮上 */
+  flex: 0 0 auto;
+}
+
+/* 顶部一行：居中搜索框 + 右侧功能入口（AI助手 / 专栏）。
+   修复「组件被挡住」：原 .icon-box 用 position:absolute 钉在 .main-page 右上角，
+   而搜索框是宽度 702px(>=1020px 断点) 的居中块，两者在视口 <1542px 时必然重叠 ——
+   实测 1280 宽时整个「搜索」按钮被盖住且点不动，1366 宽压掉 60px，1440 宽压掉 23px。
+   （.icon-box 虽无背景色，但它是可命中元素，被压住的部分点击事件也会被它吃掉。）
+   改为同一 flex 行内的左右两个等宽侧栏后，重叠在布局层面不再可能。 */
+.head-bar {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+/* 左侧占位：与右侧 .icon-box 等宽 + 同边距，靠 .search-panel 的 margin:auto 把搜索框继续顶在正中。
+   400px 即修复前 .icon-box 的宽度（写 px 不写 rem：根字号是 14px，25rem 只有 350px）。
+   视口变窄时两侧同步收窄、绝不越过搜索框；min-width 168px 是图标内容（148px）+左内边距的最小宽度，
+   再窄则整行横向滚动（不会退化成互相重叠）。 */
+.head-bar::before {
+  content: '';
+  flex: 0 1 400px;
+  min-width: 168px;
+  margin: 0 2rem;
 }
 
 .recommendation>img {
@@ -292,32 +320,23 @@ onBeforeUnmount(() => {
 }
 
 .icon-box {
-  position: absolute;
-  right: 0;
-  top: 0;
-  width: 400px;
+  /* 由 position:absolute 改为 flex 行内元素 —— 这是「不再压住搜索框」的关键 */
+  flex: 0 1 400px;
+  min-width: 168px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   height: 80px;
-  /* background-color: #8f228f; */
-  /* color: #000; */
-  margin: 20px;
-  text-align: left;
-
-  &::after {
-    content: '';
-    position: absolute;
-    width: 1px;
-    height: 30px;
-    background-color: #5d5c5cd8;
-    padding: 20px 0;
-
-  }
+  /* 与首页头部头像的 right: 2rem 对齐（右边缘同为 W-2rem） */
+  margin: 0 2rem;
 
   .icon-box-content {
-    position: absolute;
-    left: 10px;
     display: flex;
-    /* align-items: center; */
+    align-items: center;
     height: 50px;
+    /* 原 .icon-box::after 的竖分隔线：改挂在内容左侧，随内容一起移动，不再横穿搜索按钮 */
+    border-left: 1px solid #5d5c5cd8;
+    padding-left: 10px;
 
     .item {
       margin-right: 20px;
@@ -328,6 +347,11 @@ onBeforeUnmount(() => {
       &:hover {
         color: #79b1ec;
 
+      }
+
+      /* 去掉末项右外边距，让「专栏」右边缘与头像右边缘对齐 */
+      &:last-child {
+        margin-right: 0;
       }
     }
 

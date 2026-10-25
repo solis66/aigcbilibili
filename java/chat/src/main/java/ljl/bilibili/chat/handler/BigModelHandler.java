@@ -5,6 +5,7 @@ import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;
+import ljl.bilibili.chat.config.SparkProperties;
 import ljl.bilibili.chat.entity.ChatMessage;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
@@ -37,9 +38,16 @@ public class BigModelHandler extends WebSocketListener {
     public static final Gson gson = new Gson();
     private String userId;
     private ApplicationEventPublisher applicationEventPublisher;
+    /**
+     * 星火对话凭据（由 WebSocketHandler 注入）。
+     * ⚠️ 不可命名为 chat：run() 里有局部变量 JSONObject chat，会遮蔽本字段。
+     */
+    private final SparkProperties.Group sparkChat;
 
-    public BigModelHandler(ApplicationEventPublisher applicationEventPublisher) {
+    public BigModelHandler(ApplicationEventPublisher applicationEventPublisher,
+                           SparkProperties.Group sparkChat) {
         this.applicationEventPublisher = applicationEventPublisher;
+        this.sparkChat = sparkChat;
     }
     /**
      *将大模型的响应作为事件发布
@@ -57,7 +65,7 @@ public class BigModelHandler extends WebSocketListener {
         userId = id;
         System.out.print("我：");
         NewQuestion = text;
-        String authUrl = getAuthUrl(hostUrl, apiKey, apiSecret);
+        String authUrl = getAuthUrl(sparkChat.getHostUrl(), sparkChat.getApiKey(), sparkChat.getApiSecret());
         OkHttpClient client = new OkHttpClient.Builder().build();
         String url = authUrl.replace("http://", "ws://").replace("https://", "wss://");
         Request request = new Request.Builder().url(url).build();
@@ -255,12 +263,12 @@ public class BigModelHandler extends WebSocketListener {
             JSONObject requestJson = new JSONObject();
 
             JSONObject header = new JSONObject();
-            header.put(MODEL_APP_ID, appId);
+            header.put(MODEL_APP_ID, sparkChat.getAppId());
             header.put(SESSION_UID, UUID.randomUUID().toString().substring(0, 10));
 
             JSONObject parameter = new JSONObject();
             JSONObject chat = new JSONObject();
-            chat.put(MODEL_DOMAIN, MODEL_DOMAIN_VALUE);
+            chat.put(MODEL_DOMAIN, sparkChat.getDomain());
             chat.put(MODEL_TEMPERATURE, 1.0);
             chat.put(MODEL_MAX_TOKENS, 8000);
             parameter.put(MODEL_PARAMETER, chat);

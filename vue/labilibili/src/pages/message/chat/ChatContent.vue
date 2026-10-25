@@ -36,6 +36,13 @@
                                                 i.text }}
                                             </p>
                                         </template>
+                                        <!-- FIX-24：AIPPT 生成的可下载 pptx。原先只展示大纲/正文，
+                                             用户拿不到文件；后端补齐后此处给出下载入口。
+                                             上游链接为临时文件，故不持久化、即时下载。 -->
+                                        <div v-if="chatItem.pptUrl" class="ppt-download-row">
+                                            <a class="ppt-download-btn" :href="chatItem.pptUrl" target="_blank"
+                                                rel="noopener noreferrer">下载 PPTX 文件</a>
+                                        </div>
                                     </template>
 
                                 </div>
@@ -375,20 +382,31 @@ const subPPt = async () => {
         leastMessage: reply.value,
         type: '2'
     })
-    let res = await getPPtData(reply.value);
-    if (res.status == 200) {
-        console.log(res.data);
-        let imgSrc = res.data.coverImgSrc;
+    try {
+        let res = await getPPtData(reply.value);
+        if (res.status == 200) {
+            console.log(res.data);
+            let imgSrc = res.data.coverImgSrc;
 
-        chatData.value.push({
-            id: 0,
-            createTime: new Date(),
-            upId: currentPerson.value.upId,
-            // content: reply.value,
-            content: res.data.pptWordList,
-            type: '2',
-            imgSrc: imgSrc
-        })
+            chatData.value.push({
+                id: 0,
+                createTime: new Date(),
+                upId: currentPerson.value.upId,
+                // content: reply.value,
+                content: res.data.pptWordList,
+                type: '2',
+                imgSrc: imgSrc,
+                // FIX-24：接收后端补齐的 pptx 下载地址（未生成时为 null，模板按需渲染入口）
+                pptUrl: res.data.pptUrl
+            })
+        } else {
+            ElMessage.error('PPT 生成失败，请稍后重试')
+        }
+    } catch (e) {
+        // FIX-24：AIPPT 链路耗时长（含逐章节扩写 + 生成文件），失败必须给用户明确反馈，
+        //   原先无 catch —— 请求异常时用户只看到消息石沉大海。
+        console.error('AIPPT 生成失败', e)
+        ElMessage.error('PPT 生成失败，请稍后重试')
     }
 }
 
@@ -408,7 +426,10 @@ const submit = () => {
 
     } else if (props.type == '2') {
         //ppt
-        subPPt()
+        // FIX-24：AIPPT 全流程（大纲 + 逐章节扩写 + 生成 pptx）实测约 70~90s，
+        //   原先不置 loading，用户会以为卡死而重复点击（每次都新建一轮计费请求）。
+        loading.value = true
+        subPPt().finally(() => { loading.value = false })
     }
 }
 
@@ -494,6 +515,29 @@ $item-min-height: 2.6rem;
             background: #3d4d7a;
             color: #fff;
         }
+    }
+}
+
+/* FIX-24：AIPPT 生成结果的 pptx 下载入口 */
+.ppt-download-row {
+    margin-top: 0.6rem;
+    display: flex;
+    justify-content: flex-end;
+}
+
+.ppt-download-btn {
+    display: inline-block;
+    padding: 0.25rem 0.9rem;
+    font-size: 13px;
+    line-height: 1.6;
+    color: #fff;
+    background-color: #00a1d6;
+    border-radius: 4px;
+    text-decoration: none;
+    cursor: pointer;
+
+    &:hover {
+        background-color: #0b8ec2;
     }
 }
 

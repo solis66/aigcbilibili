@@ -4,12 +4,10 @@ import com.alibaba.fastjson.JSON;
 import com.alibaba.fastjson.JSONArray;
 import com.alibaba.fastjson.JSONObject;
 import com.google.gson.Gson;
-import com.google.gson.JsonObject;
-import ljl.bilibili.chat.entity.ChatMessage;
+import ljl.bilibili.chat.config.SparkProperties;
 import ljl.bilibili.chat.entity.PPTDetail;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.*;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.web.socket.TextMessage;
 
 import javax.crypto.Mac;
@@ -24,7 +22,11 @@ import java.util.*;
 import static ljl.bilibili.chat.constant.Constant.*;
 
 /**
- *大模型
+ *AIPPT 章节扩写用的星火对话 handler。
+ *
+ * FIX-24（2026-09-23）：本类原先有 3 处会直接拖垮 chat 服务或挂死请求线程的缺陷，
+ *   因 AIPPT 一个需求要为**每个子章节**各建一条 WS 连接（实测一次 8~10 条），
+ *   缺陷概率被放大 N 倍，故一并修复。详见 docker/README.md §11.1 FIX-24。
  */
 @Slf4j
 public class PPTHandler extends WebSocketListener {
@@ -35,25 +37,47 @@ public class PPTHandler extends WebSocketListener {
     public String NewQuestion="";
     public static final Gson gson = new Gson();
     public PPTDetail pptDetail=new PPTDetail();
-    private String appId;
-    private String apiKey;
-    private String apiSecret;
+    /**
+     * 星火对话凭据（由 ChatServiceImpl 注入）。
+     * ⚠️ 不可命名为 chat：run() 里有局部变量 JSONObject chat，会遮蔽本字段。
+     */
+    private final SparkProperties.Group sparkChat;
 
     /**
-     *将大模型的响应作为事件发布
+     * 本次生成是否已终止（正常收尾 / 失败 / 连接被关闭）。
+     * ChatServiceImpl 依赖它做**有上限**的等待 —— 原实现用 `while (!getGenerateEnding())` 死等，
+     * 星火一旦不返回 status==2 就会永久占住 Tomcat 请求线程。
      */
-//    public void publishMessage(String message) {
-//        log.info("publish");
-//           MessageEvent messageEvent = new MessageEvent(this, message);
-//           applicationEventPublisher.publishEvent(messageEvent);
-//    }
-    public PPTHandler(String text,String appId,String apiKey,String apiSecret){
+    private volatile boolean finished = false;
+
+    /** 失败原因；null 表示未出错。调用方据此判断是「降级」还是「完整成功」。 */
+    private volatile String errorMsg = null;
+
+    public PPTHandler(String text, SparkProperties.Group sparkChat) {
         pptDetail.setThemeName(text);
         pptDetail.setGenerateEnding(false);
         pptDetail.setText("");
-        this.apiKey=apiKey;
-        this.appId=appId;
-        this.apiSecret=apiSecret;
+        this.sparkChat = sparkChat;
+    }
+
+    /** 生成是否已终止（无论成功、失败还是超时）。 */
+    public boolean isFinished() {
+        return finished;
+    }
+
+    /** 失败原因；null 表示未发生错误。 */
+    public String getErrorMsg() {
+        return errorMsg;
+    }
+
+    /**
+     * 标记本次生成为「失败终止」。
+     * 同时置 generateEnding=true 以兼容旧字段语义。
+     */
+    private void markFailed(String reason) {
+        this.errorMsg = reason;
+        this.pptDetail.setGenerateEnding(true);
+        this.finished = true;
     }
 
     /**
@@ -62,8 +86,13 @@ public class PPTHandler extends WebSocketListener {
     public  void  send(String text) throws Exception {
                 System.out.print("我：");
                 NewQuestion=text+",限定在150字以内";
-                String authUrl = getAuthUrl(hostUrl, apiKey, apiSecret);
-                OkHttpClient client = new OkHttpClient.Builder().build();
+                String authUrl = getAuthUrl(sparkChat.getHostUrl(), sparkChat.getApiKey(), sparkChat.getApiSecret());
+                // FIX-24：OkHttpClient 改为**每实例独立**并限定超时。
+                //   原为 new OkHttpClient.Builder().build()（无任何超时）—— 服务端不响应时会一直挂着。
+                OkHttpClient client = new OkHttpClient.Builder()
+                        .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                        .build();
                 String url = authUrl.replace("http://", "ws://").replace("https://", "wss://");
                 Request request = new Request.Builder().url(url).build();
                     totalAnswer = "";
@@ -71,23 +100,22 @@ public class PPTHandler extends WebSocketListener {
                     run(webSocket);
     }
     /**
-     *若会话记录过长则删除前面一部分
+     *若会话记录过长则删除前面一部分。
+     *
+     * FIX-24：原实现无条件 `remove(0..4)`，在 historyList 不足 5 条时抛
+     *   IndexOutOfBoundsException；且调用方拿到 false 后**又** remove(0) 一次，属双重删除。
+     *   现改为「从最老的开始裁剪，保留至少 1 条」，返回是否已降到上限内；调用方只负责 add。
      */
     public  boolean canAddHistory() {
-        int history_length = 0;
+        int historyLength = 0;
         for (RoleContent temp : historyList) {
-            history_length = history_length + temp.content.length();
+            historyLength += temp.content == null ? 0 : temp.content.length();
         }
-        if (history_length > 12000) {
-            historyList.remove(0);
-            historyList.remove(1);
-            historyList.remove(2);
-            historyList.remove(3);
-            historyList.remove(4);
-            return false;
-        } else {
-            return true;
+        while (historyLength > 12000 && historyList.size() > 1) {
+            RoleContent removed = historyList.remove(0);
+            historyLength -= removed.content == null ? 0 : removed.content.length();
         }
+        return historyLength <= 12000;
     }
 
 
@@ -106,12 +134,16 @@ public class PPTHandler extends WebSocketListener {
     public void onMessage(WebSocket webSocket, String text) {
         try {
             JsonParse myJsonParse = gson.fromJson(text, JsonParse.class);
-            Integer status=myJsonParse.header.status;
+            if (myJsonParse == null || myJsonParse.header == null) {
+                return;
+            }
             if (myJsonParse.header.code != 0) {
-
-                System.out.println("发生错误，错误码为：" + myJsonParse.header.code);
-                System.out.println("本次请求的sid为：" + myJsonParse.header.sid);
+                // FIX-24：原先只 println 后 close，onFailure/等待方无从得知；现登记失败原因。
+                log.warn("AIPPT 章节[{}] 星火返回错误码 code={} sid={}",
+                        pptDetail.getThemeName(), myJsonParse.header.code, myJsonParse.header.sid);
+                markFailed("星火返回错误码 " + myJsonParse.header.code);
                 webSocket.close(1000, "");
+                return;
             }
             if(myJsonParse.payload!=null){
                 if(myJsonParse.payload.choices!=null){
@@ -126,44 +158,59 @@ public class PPTHandler extends WebSocketListener {
             if (myJsonParse.header.status == 2) {
                 // 可以关闭连接，释放资源
                 pptDetail.setGenerateEnding(true);
-                System.out.println();
-                System.out.println("*************************************************************************************");
                 if (canAddHistory()) {
                     RoleContent roleContent = new RoleContent();
                     roleContent.setRole(ASSISTANT_ROLE);
                     roleContent.setContent(totalAnswer);
 
                     historyList.add(roleContent);
-                } else {
-                    historyList.remove(0);
-                    RoleContent roleContent = new RoleContent();
-                    roleContent.setRole(ASSISTANT_ROLE);
-                    roleContent.setContent(totalAnswer);
-                    historyList.add(roleContent);
                 }
-            totalAnswer="";
+                totalAnswer="";
+                // FIX-24：由真正的「流式收尾点」关闭连接，而不是发送后盲等 200ms 就关。
+                finished = true;
+                webSocket.close(1000, "done");
             }
         } catch (Exception e) {
-            e.printStackTrace();
+            // FIX-24：解析异常不再只 printStackTrace —— 登记失败原因，让等待方及时退出。
+            log.warn("AIPPT 章节[{}] 响应解析失败：{}", pptDetail.getThemeName(), e.toString());
+            markFailed("响应解析失败");
         }
     }
 
     @Override
     public void onFailure(WebSocket webSocket, Throwable t, Response response) {
         super.onFailure(webSocket, t, response);
+        // FIX-24（关键）：原实现在此 `System.exit(0)` —— 星火一次抖动就会**杀掉整个 chat JVM**。
+        //   AIPPT 一次生成要建 N 条 WS 连接，等于把「整个服务被一个章节拖死」的概率放大 N 倍。
+        //   现改为：只标记本次失败并释放连接，JVM 不受影响，上层按「已收到的内容」降级。
+        int code = response != null ? response.code() : -1;
+        String bodyBrief = "-";
         try {
-            if (null != response) {
-                int code = response.code();
-                System.out.println("onFailure code:" + code);
-                System.out.println("onFailure body:" + response.body().string());
-                if (101 != code) {
-                    System.out.println("connection failed");
-                    System.exit(0);
-                }
+            if (response != null && response.body() != null) {
+                String b = response.body().string();
+                bodyBrief = b.length() <= 200 ? b : b.substring(0, 200) + "...";
             }
-        } catch (IOException e) {
-            // TODO Auto-generated catch block
-            e.printStackTrace();
+        } catch (Exception ignore) {
+            // body 不可读时忽略，不影响主流程
+        }
+        log.warn("AIPPT 章节[{}] 星火连接失败 code={} err={} body={}",
+                pptDetail.getThemeName(), code, t == null ? "-" : t.getMessage(), bodyBrief);
+        markFailed("星火连接失败 code=" + code);
+        try {
+            webSocket.close(1000, "");
+        } catch (Exception ignore) {
+            // 连接可能已断开，忽略
+        }
+    }
+
+    @Override
+    public void onClosed(WebSocket webSocket, int code, String reason) {
+        super.onClosed(webSocket, code, reason);
+        // FIX-24：对端在 status==2 之前就关闭时兜底，避免调用方死等。
+        if (!finished) {
+            log.warn("AIPPT 章节[{}] 星火连接提前关闭 code={} reason={}，已累积 {} 字",
+                    pptDetail.getThemeName(), code, reason, pptDetail.getText().length());
+            markFailed("连接提前关闭 code=" + code);
         }
     }
 
@@ -250,12 +297,12 @@ public class PPTHandler extends WebSocketListener {
             JSONObject requestJson = new JSONObject();
 
             JSONObject header = new JSONObject();
-            header.put(MODEL_APP_ID, appId);
+            header.put(MODEL_APP_ID, sparkChat.getAppId());
             header.put(SESSION_UID, UUID.randomUUID().toString().substring(0, 10));
 
             JSONObject parameter = new JSONObject();
             JSONObject chat = new JSONObject();
-            chat.put(MODEL_DOMAIN, MODEL_DOMAIN_VALUE);
+            chat.put(MODEL_DOMAIN, sparkChat.getDomain());
             chat.put(MODEL_TEMPERATURE, 1.0);
             chat.put(MODEL_MAX_TOKENS, 8000);
             parameter.put(MODEL_PARAMETER, chat);
@@ -283,13 +330,13 @@ public class PPTHandler extends WebSocketListener {
             requestJson.put(REQUEST_PAYLOAD, payload);
             webSocket.send(requestJson.toString());
 
-            while (true) {
-                Thread.sleep(200);
-                    break;
-            }
-            webSocket.close(1000, "");
+            // FIX-24：删除原先「sleep 200ms 后无条件 close(1000,"")」。
+            //   星火 v3.5 是**流式**返回，200ms 内必然收不完；提前 close 会与 onMessage 形成竞态，
+            //   可能丢掉尾包（status==2）→ 调用方死等。现统一由 onMessage(status==2)
+            //   或 onFailure / onClosed 负责收尾关连接。
         } catch (Exception e) {
-            e.printStackTrace();
+            log.warn("AIPPT 章节[{}] 请求发送失败：{}", pptDetail.getThemeName(), e.toString());
+            markFailed("请求发送失败");
         }
     }
 

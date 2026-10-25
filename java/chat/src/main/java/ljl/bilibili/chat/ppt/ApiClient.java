@@ -128,11 +128,18 @@ public class ApiClient {
 
     private String executeRequest(Request request) throws IOException {
         try (Response response = client.newCall(request).execute()) {
+            String body = response.body() == null ? "" : response.body().string();
             if (!response.isSuccessful()) {
-                System.out.println(response.body().string());
-                throw new IOException(ERROR_MESSAGE + response);
+                // FIX-24：原实现先 System.out.println(整个响应体) 再抛异常 ——
+                //   一是把上游原文直接打到 stdout（不经日志框架、无级别、生产无法关闭），
+                //   二是 AIPPT 的失败响应体可能很长。现改为把**截断后**的响应体带进异常，
+                //   由调用方的日志统一记录与脱敏。
+                String brief = body.length() <= 300
+                        ? body
+                        : body.substring(0, 300) + "...(总长 " + body.length() + ")";
+                throw new IOException(ERROR_MESSAGE + response.code() + " body=" + brief);
             }
-            return response.body().string();
+            return body;
         }
     }
 

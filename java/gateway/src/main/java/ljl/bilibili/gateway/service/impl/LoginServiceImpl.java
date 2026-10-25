@@ -55,6 +55,15 @@ public class LoginServiceImpl implements LoginService {
     @Value("${spring.mail.username}")
     private String from;
 
+    /**
+     * 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）。
+     * 原两处（手机号注册 / 邮箱注册）为字面量 https://labilibili.com/user-cover/default.png，
+     * 本地部署时该路径实测 404 → 新注册用户头像破图。
+     * 参数化后**默认值保持不变**（宿主直跑零配置），容器侧在 docker/config/gateway/application.yml 覆盖。
+     */
+    @Value("${bilibili.user.default-cover:https://labilibili.com/user-cover/default.png}")
+    private String defaultUserCover;
+
     @Resource
     public JavaMailSender mailSender;
     /**
@@ -94,7 +103,7 @@ public class LoginServiceImpl implements LoginService {
         }
         //不存在则直接创建一个新用户
         if(user ==null){
-            User newUser =phoneNumberLoginRequest.toEntity().setCover("https://labilibili.com/user-cover/default.png");
+            User newUser =phoneNumberLoginRequest.toEntity().setCover(defaultUserCover);
             passwordEncoder.encode(newUser.getPassword());
             userMapper.insert(newUser);
             privilegeMapper.insert(new Privilege().setUserId(newUser.getId()));
@@ -136,7 +145,7 @@ public class LoginServiceImpl implements LoginService {
 
         }
         if(user ==null){
-            User newUser =mailLoginRequest.toEntity().setCover("https://labilibili.com/user-cover/default.png");
+            User newUser =mailLoginRequest.toEntity().setCover(defaultUserCover);
             passwordEncoder.encode(newUser.getMailNumber());
             userMapper.insert(newUser);
             privilegeMapper.insert(new Privilege().setUserId(newUser.getId()));

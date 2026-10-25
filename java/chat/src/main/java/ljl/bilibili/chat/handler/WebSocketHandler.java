@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import ljl.bilibili.chat.config.SparkProperties;
 import ljl.bilibili.chat.entity.ChatMessage;
 import ljl.bilibili.chat.event.MessageEvent;
 import ljl.bilibili.client.notice.SendNoticeClient;
@@ -43,6 +44,11 @@ public class WebSocketHandler extends TextWebSocketHandler {
     public static volatile ConcurrentMap<String, BigModelHandler> BIGMODEL_MAP = new ConcurrentHashMap<>();
     @Resource
     ChatMapper chatMapper;
+    /**
+     * 星火凭据来源（外置）。BigModelHandler 不是 Spring Bean，由本类构造时传入。
+     */
+    @Resource
+    SparkProperties sparkProperties;
 
     @EventListener
     @Async
@@ -74,7 +80,7 @@ public class WebSocketHandler extends TextWebSocketHandler {
                 if (BIGMODEL_MAP.get(id) != null) {
                     BIGMODEL_MAP.get(id).send(question, id);
                 } else {
-                    BigModelHandler bigModelHandler = new BigModelHandler(applicationEventPublisher);
+                    BigModelHandler bigModelHandler = new BigModelHandler(applicationEventPublisher, sparkProperties.getChat());
                     BIGMODEL_MAP.put(id, bigModelHandler);
                     bigModelHandler.send(question, id);
                 }

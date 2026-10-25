@@ -40,7 +40,16 @@ public class UserInfoServiceImpl implements UserInfoService {
     MinioClient minioClient;
     @Value("${minio.bucket.name}")
     private String bucketName;
-    String filePath="https://labilibili.com/";
+    /**
+     * 头像 URL 前缀（FIX-13，2026-09-23 本机实测新增）。
+     * 原为字面量 "https://labilibili.com/" —— 本地部署时该域名对应路径实测 404
+     * → 「修改信息」上传头像后写库的 URL 立刻破图（与前端头像不显示为同一根因）。
+     * 参数化后**默认值保持不变**（宿主直跑零配置），容器侧在
+     * docker/config/user-center/application.yml 覆盖为 http://localhost:2023/ 。
+     * ⚠️ 末尾斜杠必须保留：下游拼接语义是 filePath + bucketName + "/" + coverName。
+     */
+    @Value("${minio.file-path:https://labilibili.com/}")
+    private String filePath;
     @Resource
     SendNoticeClient sendNoticeClient;
     @Resource

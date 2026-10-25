@@ -17,6 +17,7 @@ import org.apache.rocketmq.spring.annotation.ConsumeMode;
 import org.apache.rocketmq.spring.annotation.RocketMQMessageListener;
 import org.apache.rocketmq.spring.core.RocketMQListener;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
@@ -58,6 +59,16 @@ public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
     SendDBChangeServiceImpl sendDBChangeService;
     @Autowired
     DynamicMapper dynamicMapper;
+
+    /**
+     * 浏览器可见的 minio 对象基地址（FIX-14，2026-09-23 本机实测新增）
+     *   原为字面量 "https://labilibili.com/" —— 作者线上域名，本地部署时该路径不可达，
+     *   且此处的 cover 会被写进 video.cover 与 dynamic.video_cover，前端直接当 <img :src> 用。
+     *   仅「投稿未带封面」分支（hasCover=false）会走到这里；默认值保持原字面量不变。
+     *   容器侧在 docker/config/notice/application.yml 覆盖为 http://localhost:2023/。
+     */
+    @Value("${minio.file-path:https://labilibili.com/}")
+    private String minioFilePath;
     /**
      *转码视频、如果视频无封面则截取封面、获取视频时长
      */
@@ -85,7 +96,7 @@ public class VideoEncodeConsumer implements RocketMQListener<MessageExt> {
                 screenExtractor.renderOneImage(multimediaObject, -1, -1, 1000, coverFile, 1);
                 CustomMultipartFile coverMultipartFile = new CustomMultipartFile(new FileInputStream(coverFile), coverFileName, contentType);
                 videoClient.uploadVideoCover(coverMultipartFile);
-                String prefixPath="https://labilibili.com/video-cover/";
+                String prefixPath = minioFilePath + "video-cover/";
                 String cover=prefixPath+coverFileName;
                 updateVideo.setCover(cover);
                 LambdaUpdateWrapper<Dynamic> wrapper=new LambdaUpdateWrapper<>();

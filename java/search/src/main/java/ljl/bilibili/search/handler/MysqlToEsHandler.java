@@ -1,11 +1,10 @@
 package ljl.bilibili.search.handler;
 
-import com.google.common.hash.BloomFilter;
-import com.google.common.hash.Funnels;
 import com.xxl.job.core.handler.annotation.XxlJob;
+import ljl.bilibili.entity.user_center.user_info.User;
+import ljl.bilibili.mapper.user_center.user_info.UserMapper;
 import ljl.bilibili.search.constant.Constant;
 import ljl.bilibili.search.service.MysqlToEsService;
-import ljl.bilibili.search.service.impl.MysqlToEsServiceImpl;
 import lombok.extern.slf4j.Slf4j;
 import org.elasticsearch.action.DocWriteRequest;
 import org.elasticsearch.action.bulk.BulkItemResponse;
@@ -13,15 +12,10 @@ import org.elasticsearch.action.bulk.BulkRequest;
 import org.elasticsearch.action.bulk.BulkResponse;
 import org.elasticsearch.action.delete.DeleteRequest;
 import org.elasticsearch.action.index.IndexRequest;
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchResponse;
 import org.elasticsearch.action.update.UpdateRequest;
 import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
-import org.elasticsearch.index.query.QueryBuilders;
-import org.elasticsearch.search.SearchHit;
-import org.elasticsearch.search.builder.SearchSourceBuilder;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Component;
 
@@ -43,16 +37,10 @@ public class MysqlToEsHandler {
     RestHighLevelClient client;
     @Resource
     MysqlToEsService mysqlToEsService;
+    @Resource
+    UserMapper userMapper;
     private static Boolean hasSynchronousVideo = false;
     private static Boolean hasSynchronousUser = false;
-    BloomFilter<Integer> videoFilter = BloomFilter.create(
-            Funnels.integerFunnel(),
-            1000,
-            0.01);
-    BloomFilter<Integer> userFilter = BloomFilter.create(
-            Funnels.integerFunnel(),
-            1000,
-            0.01);
     /**
      *同步MySQL数据到ES
      */
@@ -81,27 +69,25 @@ public class MysqlToEsHandler {
             mysqlAddToEs(Constant.OPERATION_ADD, videoAddList, Constant.VIDEO_INDEX_NAME);
         }
         if (videoDeleteList.size() > 0) {
-            mysqlAddToEs(Constant.OPERATION_DELETE, videoAddList, Constant.VIDEO_INDEX_NAME);
+            // FIX-19（2026-09-23）：此处原为 videoAddList —— 传错了列表，
+            // 导致「删除视频」的同步实际上拿新增列表去做 DeleteRequest：
+            // 已删视频永远留在 ES 里（搜索能搜到、点进去 404），而新增视频反被删索引。
+            // 判据：删掉一条视频后跑一次同步，ES 中该文档应消失。
+            mysqlAddToEs(Constant.OPERATION_DELETE, videoDeleteList, Constant.VIDEO_INDEX_NAME);
         }
 
         if (userAddList.size() > 0) {
             mysqlAddToEs(Constant.OPERATION_ADD, userAddList, Constant.USER_INDEX_NAME);
         }
-        SearchRequest videoSearchRequest = new SearchRequest(Constant.VIDEO_INDEX_NAME);
-        videoSearchRequest.source(new SearchSourceBuilder().query(QueryBuilders.matchAllQuery()).size(10000));
-        SearchResponse videoSearchResponse = client.search(videoSearchRequest, RequestOptions.DEFAULT);
-        for (SearchHit searchHit : videoSearchResponse.getHits().getHits()) {
-            videoFilter.put(Integer.valueOf(searchHit.getId()));
-        }
-        SearchRequest userSearchRequest = new SearchRequest(Constant.USER_INDEX_NAME);
-        SearchSourceBuilder sourceBuilder = new SearchSourceBuilder().size(10000);
-        userSearchRequest.source(sourceBuilder.query(QueryBuilders.matchAllQuery()));
-        SearchResponse userSearchResponse = client.search(userSearchRequest, RequestOptions.DEFAULT);
-        //将当前所有文档id存储到布隆过滤器中
-        for (SearchHit searchHit : userSearchResponse.getHits().getHits()) {
-            int id = Integer.valueOf(searchHit.getId());
-            userFilter.put(id);
-        }
+        // FIX-19（2026-09-23）：此处原有「把 ES 当前所有文档 id 灌进布隆过滤器」的逻辑，
+        //   它只在下面 update 分支里用来「判定不存在就跳过」。实测这条机制是坏的：
+        //   ① 过滤器只在**首次全量同步**时填充一次（在 hasSynchronousVideo 那个 if 里），
+        //      此后永不刷新 → 新上传的视频必然「不在过滤器里」→ 更新被全部跳过；
+        //   ② 跳过之后仍然发出**空的 BulkRequest** → ES 报
+        //      ActionRequestValidationException: Validation Failed: 1: no requests added;
+        //      → 任务返回 500（xxl_job_log.handle_code=500）。
+        //   处置：删掉这套「猜存在性」的机制，update 一律走 upsert（见 mysqlAddToEs）。
+        //   判据：xxl_job_log 的 handle_code 不再出现 500。
         //最后再执行更新操作
         if (videoUpDateList.size() > 0) {
             mysqlAddToEs(Constant.OPERATION_UPDATE, videoUpDateList, Constant.VIDEO_INDEX_NAME);
@@ -122,11 +108,11 @@ public class MysqlToEsHandler {
 
     public Boolean mysqlAddToEs(String requestType, List<HashMap<String, Object>> list, String indexName) throws IOException {
         //批量添加请求
-        BulkRequest bulkRequest;
+        BulkRequest bulkRequest = new BulkRequest();
         List<DocWriteRequest> docWriteRequestList = new ArrayList<>();
         if (requestType.equals("add")) {
-            bulkRequest = new BulkRequest();
             for (Map<String, Object> document : list) {
+                normalizeVideoDocument(document, indexName);
                 int intId;
                 if (Constant.VIDEO_INDEX_NAME.equals(indexName)) {
                     intId = (Integer) document.get(Constant.VIDEO_INDEX_ID);
@@ -141,45 +127,85 @@ public class MysqlToEsHandler {
             }
 
         } else if (requestType.equals("update")) {
-            bulkRequest = new BulkRequest();
-            if (Constant.VIDEO_INDEX_NAME.equals(indexName)) {
-                for (Map<String, Object> map : list) {
-                    int intId = (Integer) map.get(Constant.VIDEO_INDEX_ID);
-                    //利用布隆过滤器判定存在可能误判，判定不存在则一定不存在的特性反向百分百找到一定不会出错的文档id并添加到递归同步的请求集合中
-                    if (!videoFilter.mightContain(intId)) {
-
-                    } else {
-                        UpdateRequest updateRequest = new UpdateRequest(indexName, String.valueOf(intId)).doc(map);
-                        bulkRequest.add(updateRequest);
-                        docWriteRequestList.add(updateRequest);
-                    }
-                }
-            } else {
-                for (Map<String, Object> map : list) {
-                    int intId = (Integer) map.get(Constant.INDEX_ID);
-                    if (!userFilter.mightContain(intId)) {
-
-                    } else {
-                        UpdateRequest updateRequest = new UpdateRequest(indexName, String.valueOf(intId)).doc(map);
-                        bulkRequest.add(updateRequest);
-                        docWriteRequestList.add(updateRequest);
-                    }
-                }
+            for (Map<String, Object> map : list) {
+                normalizeVideoDocument(map, indexName);
+                int intId = Constant.VIDEO_INDEX_NAME.equals(indexName)
+                        ? (Integer) map.get(Constant.VIDEO_INDEX_ID)
+                        : (Integer) map.get(Constant.INDEX_ID);
+                // FIX-19（2026-09-23）：原实现用布隆过滤器「判定不在 ES 里就跳过」，
+                //   但过滤器只在首次全量同步时填过一次，新视频必然被判为「不存在」→ 更新被丢弃；
+                //   且全部被丢弃时会发出空 BulkRequest → ES 报 no requests added → 任务 500。
+                //   改为 docAsUpsert：文档在就做局部更新，不在就顺手创建，无需猜存在性。
+                UpdateRequest updateRequest = new UpdateRequest(indexName, String.valueOf(intId))
+                        .doc(map).docAsUpsert(true);
+                bulkRequest.add(updateRequest);
+                docWriteRequestList.add(updateRequest);
             }
         } else {
-            bulkRequest = new BulkRequest();
             for (Map<String, Object> document : list) {
-                int intId;
-                    intId = (Integer) document.get(Constant.VIDEO_INDEX_ID);
-                String id = String.valueOf(intId);
-                DeleteRequest deleteRequest = new DeleteRequest(indexName, id);
+                // FIX-19（2026-09-23）：删除消息的 id 键名与新增/修改**不一样**。
+                //   video 服务的 delete() 用 TABLE_ID（= "id"）下发 {table, type=delete, id}，
+                //   而这里原来硬读 VIDEO_INDEX_ID（= "video_id"）→ 取到 null
+                //   → DeleteRequest(indexName, "null") → 删的是不存在的文档，
+                //   已删视频永远留在 ES（搜索得到、点进去 404）。
+                //   兼容两种键名，避免再次踩「上下游键名不一致」。
+                Object rawId = document.containsKey(Constant.VIDEO_INDEX_ID)
+                        ? document.get(Constant.VIDEO_INDEX_ID)
+                        : document.get(Constant.INDEX_ID);
+                if (rawId == null) {
+                    continue;
+                }
+                DeleteRequest deleteRequest = new DeleteRequest(indexName, String.valueOf(rawId));
                 bulkRequest.add(deleteRequest);
                 docWriteRequestList.add(deleteRequest);
             }
         }
+        // FIX-19：空 BulkRequest 会被 ES 拒绝（Validation Failed: 1: no requests added）并让任务报 500。
+        //   前置条件判断（size()>0）挡不住「列表非空但每条都被过滤掉」的情况，这里按最终请求数兜底。
+        if (bulkRequest.numberOfActions() == 0) {
+            return true;
+        }
         //递归调用同步方法
         bulkOpreateUntilAllSucess(bulkRequest, docWriteRequestList, 10);
         return true;
+    }
+
+    /**
+     * FIX-19（2026-09-23）：把增量文档的字段名对齐到全量同步（MysqlToEsServiceImpl.videoMysqlToEs）定义的 ES 结构。
+     *   增量消息由 video 服务发出（UploadAndEditServiceImpl 用 SNAKE_CASE 序列化 Video 实体），
+     *   落进 redis 的是 name / user_id / video_length；而全量同步写的是
+     *   video_name / author_id / author_name / length。
+     *   两者不一致的后果（本机实测）：新投稿的视频文档在 ES 里**确实存在**，但只有 name 字段，
+     *   而 totalKeywordSearch / videoPageKeywordSearch 只查 video_name / author_name / intro
+     *   → 新视频永远搜不到，直到 search 服务重启触发一次全量同步。
+     *   判据：投稿后等一个调度周期，videoKeywordSearch 应能搜到新视频。
+     */
+    private void normalizeVideoDocument(Map<String, Object> document, String indexName) {
+        // redis 反序列化会带上类型标记；notice 侧的更新消息还会残留 table 字段
+        document.remove("@type");
+        document.remove("table");
+        if (!Constant.VIDEO_INDEX_NAME.equals(indexName)) {
+            return;
+        }
+        Object name = document.remove("name");
+        if (name != null) {
+            document.put(Constant.MULTI_QUERY_VIDEO_NAME, name);
+        }
+        Object authorId = document.remove("user_id");
+        if (authorId != null) {
+            document.put("author_id", authorId);
+            // 增量消息里没有作者昵称，但搜索按 author_name 匹配，缺了它「按作者搜」就搜不到新视频
+            if (!document.containsKey(Constant.MULTI_QUERY_AUTHOR_NAME) && authorId instanceof Integer) {
+                User author = userMapper.selectById((Integer) authorId);
+                if (author != null && author.getNickname() != null) {
+                    document.put(Constant.MULTI_QUERY_AUTHOR_NAME, author.getNickname());
+                }
+            }
+        }
+        Object videoLength = document.remove("video_length");
+        if (videoLength != null) {
+            document.put("length", videoLength);
+        }
     }
     /**
      *递归批量同步操作
@@ -195,7 +221,9 @@ public class MysqlToEsHandler {
                     bulkRequest1.add(list.get(i));
                 }
             }
-            return bulkOpreateUntilAllSucess(bulkRequest, list, maxRetry - 1);
+            // FIX-19：原为 bulkRequest —— 重试时把**整个原始请求**又发了一遍（而不是只发失败项），
+            //   等于白重试且会放大写入量；改为只重发失败项。
+            return bulkOpreateUntilAllSucess(bulkRequest1, list, maxRetry - 1);
         } else {
             return true;
         }

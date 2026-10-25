@@ -10,7 +10,8 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
 @Component
-@FeignClient(name = "video",url = "http://localhost:10201")
+// url 用占位符：默认值 http://localhost:10201 适配宿主直跑；容器内由外置配置覆盖为 http://video:10201
+@FeignClient(name = "video",url = "${service.video.url:http://localhost:10201}")
 public interface VideoClient {
     @PostMapping(value = "/videoEncode/uploadVideo",consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     void uploadVideo(@RequestPart("multipartFile") MultipartFile multipartFile);

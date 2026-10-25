@@ -24,3 +24,31 @@ spring:
         server-addr: 127.0.0.1:8848
         register-enabled: true
 module-name: chat
+
+# -----------------------------------------------------------------------------
+# 讯飞星火（FIX-22，2026-09-23：凭据外置化）
+#   真实密钥只写在 docker/.env（已 gitignore），本文件只有占位符与默认值 → 可安全入库。
+#   改前凭据硬编码在 constant/Constant.java，且 static final + 字面量会被 javac 内联进
+#   调用点的 .class，运行时改配置完全不生效；现统一由 config/SparkProperties 绑定。
+#   ⚠️ 对话(v3.5) / TTI 文生图 / AIPPT 生成 PPT 在讯飞是三个独立服务、独立计费。
+#      tti、aippt 未单独配置时回落复用 chat 凭据（与改造前"三处共用同一组常量"一致）；
+#      若控制台里它们是别的应用，在 docker/.env 补 SPARK_TTI_* / SPARK_AIPPT_* 即可，无需改代码。
+# -----------------------------------------------------------------------------
+spark:
+  chat:
+    host-url: "${SPARK_CHAT_HOST_URL:wss://spark-api.xf-yun.com/v3.5/chat}"
+    domain: "${SPARK_CHAT_DOMAIN:generalv3.5}"
+    app-id: "${SPARK_CHAT_APP_ID:}"
+    api-key: "${SPARK_CHAT_API_KEY:}"
+    api-secret: "${SPARK_CHAT_API_SECRET:}"
+  tti:
+    host-url: "${SPARK_TTI_HOST_URL:https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti}"
+    domain: "${SPARK_TTI_DOMAIN:s291394db}"
+    app-id: "${SPARK_TTI_APP_ID:${SPARK_CHAT_APP_ID:}}"
+    api-key: "${SPARK_TTI_API_KEY:${SPARK_CHAT_API_KEY:}}"
+    api-secret: "${SPARK_TTI_API_SECRET:${SPARK_CHAT_API_SECRET:}}"
+  aippt:
+    host-url: "${SPARK_AIPPT_HOST_URL:https://zwapi.xfyun.cn}"
+    app-id: "${SPARK_AIPPT_APP_ID:${SPARK_CHAT_APP_ID:}}"
+    api-key: "${SPARK_AIPPT_API_KEY:${SPARK_CHAT_API_KEY:}}"
+    api-secret: "${SPARK_AIPPT_API_SECRET:${SPARK_CHAT_API_SECRET:}}"

@@ -56,10 +56,22 @@ const videoRecommend = defineAsyncComponent(()=>
     float: right;
     position: absolute;
     display: flex;
+    justify-content: center;
     top: 2rem;
     left: 67rem;
     width: 35rem;
     border-radius: 20px;
+    /* NOTE left:67rem + width:35rem 使右栏右缘固定落在 1428px，
+       视口一旦窄于它，整栏（含「上一项/下一项」）会被推出屏幕且点不到。
+       窄屏改为回到文档流、单独占一行。宽屏(>=1440)保持原样。 */
+    @media screen and (max-width: 1439px) {
+        float: none;
+        position: static;
+        left: auto;
+        top: auto;
+        width: auto;
+        margin: 2rem 3rem 0;
+    }
 }
 .discussion-panel{ /* 这里不能用absolute，否则会被父组件的min-height限制死*/
     width: 45rem;
