@@ -9,7 +9,7 @@
     改成 docker compose down（删容器与网络，**保留命名卷与数据**）。
 
 .PARAMETER Purge
-    ⚠️ 危险：docker compose down -v —— 连同命名卷一起删，MySQL 里 bilibili / xxl_job
+    ⚠️ 危险：docker compose down -v —— 连同命名卷一起删，MySQL 里 bilibili 库
     的全部数据会消失，下次 up 会重跑 docker/mysql/init/ 里的建表脚本回到空库。
     需要输入 DELETEVOLUME 二次确认。
 #>

@@ -25,13 +25,6 @@ spring:
     password: user
   redis:
     host: redis                                     # 容器名（原 localhost）
-  zipkin:
-    base-url: http://zipkin:9411                    # 容器名
-    sender:
-      type: web
-  sleuth:
-    sampler:
-      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
 
 minio:
   url: http://minio:9000                            # 容器名

@@ -10,12 +10,6 @@ spring:
   redis:
     host: 127.0.0.1
     port: 16379                       # 见 middleware-host.yml：容器 redis 发布在 16379
-  zipkin:
-    base-url: http://127.0.0.1:9411
-  cloud:
-    nacos:
-      discovery:
-        server-addr: 127.0.0.1:8848   # 注：源码未引入 nacos 客户端，此键为惰性键（V-1）
 
 rocketmq:
   # broker 已用 broker.host.conf 把 brokerIP1 注册成 127.0.0.1，宿主可直接回连 10911

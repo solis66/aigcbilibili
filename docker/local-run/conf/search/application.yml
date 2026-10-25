@@ -9,19 +9,11 @@ spring:
   redis:
     host: 127.0.0.1
     port: 16379                       # 见 middleware-host.yml：容器 redis 发布在 16379
-  zipkin:
-    base-url: http://127.0.0.1:9411
 
 elasticsearch-client:
-  hosts: http://127.0.0.1:9200        # 容器模式为 http://elasticsearch:9200
+  hosts: http://127.0.0.1:19200       # 宿主发布端口见 docker/.env 的 ES_HOST_PORT；容器模式为 http://elasticsearch:9200
 
-xxl:
-  job:
-    admin:
-      addresses: http://127.0.0.1:8080/xxl-job-admin   # 容器模式为 http://xxl-job-admin:8080/...
-    executor:
-      # 执行器端口在宿主上跑，9916 空闲即可；若被占用可改这里
-      port: 9916
-      # 日志目录用**相对路径**（原值为容器内绝对路径 /data/applogs/...），
-      # 相对 JVM 工作目录 docker/local-run/，避免往宿主盘根写东西
-      logpath: var/xxl-job/logs
+bilibili:
+  search:
+    min-score: 0.1
+    sync-cron: "0 0/1 * * * ?"

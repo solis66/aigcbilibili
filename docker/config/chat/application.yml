@@ -17,18 +17,6 @@ spring:
     url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
     username: root
     password: user
-  cloud:
-    nacos:
-      discovery:
-        server-addr: nacos:8848                     # ⚠️ 原值为 127.0.0.1:8848（与其他模块不一致），改为容器名（D-01）
-        register-enabled: true
-  zipkin:
-    base-url: http://zipkin:9411                    # 容器名
-    sender:
-      type: web
-  sleuth:
-    sampler:
-      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
 
 module-name: chat                                   # 日志路径用
 

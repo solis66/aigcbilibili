@@ -5,17 +5,6 @@ spring:
     host: localhost
   application:
     name: video
-  zipkin:
-    base-url: http://localhost:9411 # zipkin服务地址
-    sender:
-      type: web
-    sleuth:
-      sampler:
-        probability: 1 # sleuth 日志记录采样率，1为100%，默认为0.1即10%
-  cloud:
-#    nacos:
-#      discovery:
-#        server-addr: 116.62.71.84:8848
   servlet:
     multipart:
       enabled: true

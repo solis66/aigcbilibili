@@ -89,7 +89,7 @@ if (Test-Path $releaseFile) {
 
 # --- 工作目录与运行期目录 ---
 Set-Location $PSScriptRoot
-foreach ($d in @('.home', 'var\temp', 'var\xxl-job\logs', 'logs')) {
+foreach ($d in @('.home', 'var\temp', 'logs')) {
     $p = Join-Path $PSScriptRoot $d
     if (-not (Test-Path $p)) { New-Item -ItemType Directory -Path $p -Force | Out-Null }
 }

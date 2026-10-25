@@ -1,20 +1,30 @@
 # =============================================================================
 # aigcbilibili —— Docker Compose 主编排
-# 口径：15 个逻辑单元 / 16 个物理容器（RocketMQ 拆 namesrv + broker 两容器，Q1 裁定）
-#       = 中间件 9（物理）+ 后端 6 + 前端 1 = 16；另有一次性 minio-init（执行完即退出，不计常驻）
 #
-# 运行方式（默认 = 全套 16 容器，不带任何 profile）：
+# 口径（v2，2026-10-25）：13 个常驻容器
+#   = 中间件 7（mysql / redis / minio / rocketmq-namesrv / rocketmq-broker / elasticsearch
+#              + 一次性 minio-init、rocketmq-store-init 不计常驻）
+#   + 后端 6（gateway / notice / user-center / video / chat / search）
+#   + 前端 1（frontend）
+#
+# v2 变更：移除 nacos / zipkin / xxl-job-admin 三个从未真正生效的中间件
+#   - nacos：没有任何模块引入 nacos 客户端，服务注册数恒为 0（V-1/D-12）
+#   - zipkin+sleuth：链路追踪 UI 的唯一消费方，采样率还写在错键上（实际恒为默认 0.1）
+#   - xxl-job：search 的执行器从未注册分组与任务，「MySQL→ES」同步自部署起一次都没跑过
+#     → 已改为 search 内 @Scheduled 定时任务，开箱即跑（见 MysqlToEsHandler）
+#   详见 docker/README.md「v2 变更记录」。
+#
+# 运行方式（默认 = 全套 13 个常驻容器，不带任何 profile）：
 #   cd docker && docker compose up -d
 #   # 或从仓库根：docker compose -f docker/docker-compose.yml up -d
 #   （compose 项目目录 = 本文件所在目录 docker/，故 ./xxx 相对路径与 build 上下文 ../ 均以此为准）
 #
-# 低内存降级（lite 子集，跳过 nacos / elasticsearch / xxl-job-admin / zipkin / search，约省 3.3GB）：
-#   cd docker && docker compose up -d mysql redis minio minio-init rocketmq-namesrv rocketmq-broker \
-#       gateway notice user-center video chat frontend
+# 低内存降级（lite 子集，跳过 elasticsearch / search，约省 2.5GB；搜索功能不可用）：
+#   cd docker && docker compose up -d mysql redis minio minio-init rocketmq-namesrv \
+#       rocketmq-broker gateway notice user-center video chat frontend
 #
 # 为什么不用 compose profiles 表达 lite：Docker Compose 的 profiles 语义是「带 profiles 的服务
-#   在未启用该 profile 时一律不启动」，无法表达「默认超集、可命名子集」——若给 nacos 等打
-#   profiles:[lite] 反而会让默认 up -d 丢掉它们，违背「默认即全套」。故此处用**显式服务清单**，
+#   在未启用该 profile 时一律不启动」，无法表达「默认超集、可命名子集」。故此处用**显式服务清单**，
 #   语义等价且更直观（详见 docker/README.md「低内存降级」）。
 #
 # 所有宿主端口均已变量化（D-11）：任何冲突只改 .env，不改本文件。
@@ -46,36 +56,9 @@ volumes:
 
 services:
   # ===========================================================================
-  # 中间件层（9 个物理容器 / 8 个逻辑单元）
+  # 中间件层（6 个常驻 + 2 个一次性 init；v2 移除 nacos / zipkin / xxl-job-admin）
   # ===========================================================================
 
-  # ---- M1 nacos（仅环境完整性保留；V-1/D-12：后端未引入 nacos 客户端，不阻塞任何服务）----
-  nacos:
-    image: nacos/nacos-server:v1.4.7
-    <<: *x-net
-    container_name: nacos
-    environment:
-      MODE: standalone
-      PREFER_HOST_MODE: hostname
-      JVM_XMS: 512m
-      JVM_XMX: 512m
-      JVM_XMN: 256m
-    ports:
-      - "${NACOS_HOST_PORT:-8848}:8848"
-    # FIX-9（2026-09-22 本机实测校准，D-08 限额修订）：
-    #   实测稳态占用 712 MiB / 768m = 92.7%，贴近上限。JVM 堆固定 512m（见上方 JVM_XMS/XMX），
-    #   其余为 metaspace + 直接内存 + 线程栈，故**抬高 cgroup 限额不增加堆占用**，只加安全余量。
-    #   D-08 首版限额系无实测数据的估算，此处按真机数据回归校准（属 D-08 精神内的参数校准，非推翻）。
-    mem_limit: 1024m
-    healthcheck:
-      # 依据：nacos/nacos-server:v1.4.7 基于 openjdk + CentOS 基底，官方文档化用法即用 curl 探活，
-      #       镜像内确有 curl（D-14 判定可用）。
-      # 注：D-12 要求 nacos 不得成为任何后端的启动阻塞依赖 —— 本文件无任何服务 depends_on 它。
-      test: ['CMD-SHELL', 'curl -fs http://localhost:8848/nacos/actuator/health || curl -fs http://localhost:8848/nacos/ || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 40s
 
   # ---- M2 mysql（业务库 bilibili；D-10 锁 5.7）----
   mysql:
@@ -361,62 +344,7 @@ services:
       retries: 15
       start_period: 60s
 
-  # ---- M7 zipkin（P1；采样默认 0.1，可由 ZIPKIN_SAMPLER_PROBABILITY 上调至 1 看全链路）----
-  zipkin:
-    image: openzipkin/zipkin:2.24.3
-    <<: *x-net
-    container_name: zipkin
-    environment:
-      STORAGE_TYPE: mem
-    ports:
-      - "${ZIPKIN_HOST_PORT:-9411}:9411"
-    mem_limit: 512m
-    healthcheck:
-      # 依据：openzipkin/zipkin:2.24.3 为 Alpine 系，含 busybox 的 wget（D-14 标注「较稳」），
-      #       且该镜像无 curl —— 故用 wget 探 /health。
-      test: ['CMD-SHELL', 'wget -q -O - http://localhost:9411/health || exit 1']
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
 
-  # ---- M8 xxl-job-admin（P1；D-13：排启动顺序末尾，绝不阻塞 search）----
-  xxl-job-admin:
-    image: xuxueli/xxl-job-admin:2.3.1
-    <<: *x-net
-    container_name: xxl-job-admin
-    environment:
-      # 该镜像的标准做法：用 PARAMS 透传 Spring Boot 命令行参数（D-13）。
-      # 数据源指向 mysql:3306/xxl_job（独立库，由 03-xxl-job.sql 建）。默认账号 admin / 123456。
-      PARAMS: >-
-        --spring.datasource.url=jdbc:mysql://mysql:3306/xxl_job?useUnicode=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
-        --spring.datasource.username=root
-        --spring.datasource.password=${MYSQL_ROOT_PASSWORD:-user}
-        --xxl.job.accessToken=${XXL_JOB_ACCESS_TOKEN:-default_token}
-    ports:
-      - "${XXL_JOB_HOST_PORT:-8080}:8080"
-    depends_on:
-      mysql:
-        condition: service_healthy
-    # FIX-9（2026-09-22 本机实测校准，D-08 限额修订）：
-    #   实测稳态占用 474 MiB / 512m = 92.6%。admin 未显式设堆，Java 8 在 cgroup 感知下按限额推算，
-    #   故原 512m 限额同时压住了堆与 off-heap；抬到 640m 后堆有余量，调度中心不会在任务量上升时先僵。
-    mem_limit: 640m
-    healthcheck:
-      # 依据：xuxueli/xxl-job-admin:2.3.1 基于 openjdk:8-jre-slim（Debian，含 bash，无 curl），
-      #       故用 bash 的 /dev/tcp 探 8080（D-14 允准的写法之一）。
-      # 注：D-13 —— 没有任何服务以 service_healthy 依赖本容器，即使它较慢/异常也不会阻塞 search。
-      test: ['CMD-SHELL', 'bash -c ":> /dev/tcp/127.0.0.1/8080"']
-      interval: 10s
-      timeout: 5s
-      retries: 15
-      start_period: 60s
-
-  # ===========================================================================
-  # 后端服务层（6 个；均用 eclipse-temurin:8-jre 运行，含 bash）
-  # 依赖原则：仅 depends_on 真正有效的中间件（D-12：不依赖 nacos）；
-  #          gateway 不依赖各后端（运行期路由重试，避免环/长链）。
-  # ===========================================================================
 
   # ---- B1 gateway ----
   gateway:
@@ -429,7 +357,6 @@ services:
     container_name: gateway
     environment:
       JAVA_OPTS: ${GATEWAY_JAVA_OPTS:--Xms256m -Xmx512m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
     ports:
       - "${GATEWAY_HOST_PORT:-8200}:8200"
     volumes:
@@ -467,7 +394,6 @@ services:
     container_name: notice
     environment:
       JAVA_OPTS: ${NOTICE_JAVA_OPTS:--Xms512m -Xmx768m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
     ports:
       - "${NOTICE_HOST_PORT:-30000}:30000"
     volumes:
@@ -499,7 +425,6 @@ services:
     container_name: user-center
     environment:
       JAVA_OPTS: ${USER_CENTER_JAVA_OPTS:--Xms256m -Xmx512m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
     ports:
       - "${USER_CENTER_HOST_PORT:-3000}:3000"
     volumes:
@@ -533,7 +458,6 @@ services:
     container_name: video
     environment:
       JAVA_OPTS: ${VIDEO_JAVA_OPTS:--Xms512m -Xmx768m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
     ports:
       - "${VIDEO_HOST_PORT:-10201}:10201"
     volumes:
@@ -567,7 +491,6 @@ services:
     container_name: chat
     environment:
       JAVA_OPTS: ${CHAT_JAVA_OPTS:--Xms256m -Xmx512m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
       # FIX-22/23：讯飞星火凭据。真实值只存在 docker/.env（已 gitignore），此处仅透传，不入库。
       #   缺省为空串 → 容器照常启动，只是星火鉴权失败（启动期有 WARN 明确提示）。
       #   ⚠️ docker/.env 只是 compose 的变量源，**不会自动注入容器** ——
@@ -607,7 +530,7 @@ services:
       retries: 15
       start_period: 60s
 
-  # ---- B6 search（P1；依赖 ES + xxl-job-admin，但 admin 不得阻塞它，D-13）----
+  # ---- B6 search（依赖 ES；MySQL→ES 同步由 search 内 @Scheduled 触发，v2 起不再依赖 xxl-job）----
   search:
     build:
       <<: *x-backend-build
@@ -618,15 +541,11 @@ services:
     container_name: search
     environment:
       JAVA_OPTS: ${SEARCH_JAVA_OPTS:--Xms384m -Xmx640m -Duser.home=/app}
-      ZIPKIN_SAMPLER_PROBABILITY: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
     ports:
       - "${SEARCH_HOST_PORT:-8201}:8201"
-    expose:
-      - "9916"          # xxl-job executor 端口，仅内部暴露
     volumes:
       - ./config/search:/app/config:ro
       - ./logs/search:/app/logs
-      - ./logs/search-xxljob:/data/applogs/xxl-job/jobhandler
     depends_on:
       mysql:
         condition: service_healthy
@@ -634,13 +553,9 @@ services:
         condition: service_healthy
       elasticsearch:
         condition: service_healthy
-      # D-13：admin 只做启动顺序，绝不用 service_healthy —— executor 容忍 admin 下线，
-      #       即便 admin 慢/异常也不得阻断 search 启动。
-      xxl-job-admin:
-        condition: service_started
     # FIX-9b（2026-09-22 本机实测校准，沿用 D-08 R1 同一规则）：
     #   实测稳态 664.2 MiB / 768m = 86.5%。堆 640m + ES 客户端缓冲/direct memory 已吃掉大半，
-    #   全量重建索引（xxl-job 触发）时堆必然增长 → 触顶即中断索引任务。
+    #   全量重建索引（v2 起由 search 内 @Scheduled 触发）时堆必然增长 → 触顶即中断索引任务。
     #   校准为 1024m：堆占限额 62.5%，仍在「≤ 堆 ×1.5」准则内。堆不动。
     mem_limit: 1024m
     healthcheck:

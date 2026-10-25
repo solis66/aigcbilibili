@@ -41,11 +41,7 @@
         <jjwt.version>0.9.1</jjwt.version>
         <minio.version>8.2.1</minio.version>
         <spring-boot-starter-data-redis.version>2.6.11</spring-boot-starter-data-redis.version>
-        <spring-cloud-starter-alibaba-nacos-discovery.version>2.1.2.RELEASE
-        </spring-cloud-starter-alibaba-nacos-discovery.version>
         <spring-cloud-starter-bootstrap.version>3.0.5</spring-cloud-starter-bootstrap.version>
-        <spring-cloud-starter-alibaba-nacos-config.version>2.1.2.RELEASE
-        </spring-cloud-starter-alibaba-nacos-config.version>
         <knife4j-openapi2-spring-boot-starter.version>4.3.0</knife4j-openapi2-spring-boot-starter.version>
         <mybatis-plus-join-boot-starter.version>1.4.10</mybatis-plus-join-boot-starter.version>
         <hutool-all.version>5.8.16</hutool-all.version>
@@ -58,14 +54,10 @@
         <common.version>1.0</common.version>
         <spring-boot-starter-logging.version>2.6.11</spring-boot-starter-logging.version>
         <spring-cloud-starter-openfeign.version>3.1.4</spring-cloud-starter-openfeign.version>
-        <spring-cloud-starter-loadbalancer.version>3.1.4</spring-cloud-starter-loadbalancer.version>
-        <spring-cloud-starter-sleuth.version>3.1.4</spring-cloud-starter-sleuth.version>
-        <spring-cloud-starter-zipkin.version>2.2.2.RELEASE</spring-cloud-starter-zipkin.version>
         <aliyun-sdk-oss.version>3.10.2</aliyun-sdk-oss.version>
         <httpclient.version>4.5.13</httpclient.version>
         <spring-boot-starter-aop.version>2.6.11</spring-boot-starter-aop.version>
         <druid.version>1.2.12</druid.version>
-        <xxl-job-core.version>2.3.1</xxl-job-core.version>
         <javase.version>3.5.1</javase.version>
         <guava.version>22.0</guava.version>
         <jave-all-deps.version>3.3.1</jave-all-deps.version>
@@ -136,11 +128,6 @@
             </dependency>
 
             <dependency>
-                <groupId>com.xuxueli</groupId>
-                <artifactId>xxl-job-core</artifactId>
-                <version>${xxl-job-core.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>com.alibaba</groupId>
                 <artifactId>druid</artifactId>
                 <version>${druid.version}</version>
@@ -154,16 +141,6 @@
                 <groupId>com.aliyun.oss</groupId>
                 <artifactId>aliyun-sdk-oss</artifactId>
                 <version>${aliyun-sdk-oss.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-sleuth</artifactId>
-                <version>${spring-cloud-starter-sleuth.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-zipkin</artifactId>
-                <version>${spring-cloud-starter-zipkin.version}</version>
             </dependency>
             <dependency>
                 <groupId>org.springframework.boot</groupId>
@@ -236,11 +213,6 @@
                 <version>${spring-cloud-starter-openfeign.version}</version>
             </dependency>
             <dependency>
-                <groupId>org.springframework.cloud</groupId>
-                <artifactId>spring-cloud-starter-loadbalancer</artifactId>
-                <version>${spring-cloud-starter-loadbalancer.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>com.google.code.gson</groupId>
                 <artifactId>gson</artifactId>
                 <version>${gson.version}</version>
@@ -298,25 +270,9 @@
                 <version>${mybatis-plus-boot-starter.version}</version>
             </dependency>
             <dependency>
-                <groupId>com.alibaba.cloud</groupId>
-                <artifactId>spring-cloud-starter-alibaba-nacos-config</artifactId>
-                <version>${spring-cloud-starter-alibaba-nacos-config.version}</version>
-            </dependency>
-            <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-starter-bootstrap</artifactId>
                 <version>${spring-cloud-starter-bootstrap.version}</version>
-            </dependency>
-            <dependency>
-                <groupId>com.alibaba.cloud</groupId>
-                <artifactId>spring-cloud-starter-alibaba-nacos-discovery</artifactId>
-                <version>${spring-cloud-starter-alibaba-nacos-discovery.version}</version>
-                <exclusions>
-                    <exclusion>
-                        <groupId>org.springframework.cloud</groupId>
-                        <artifactId>spring-cloud-starter-netflix-ribbon</artifactId>
-                    </exclusion>
-                </exclusions>
             </dependency>
             <!-- RocketMQ Spring Boot Starter -->
             <dependency>
@@ -355,7 +311,6 @@
                 <artifactId>httpclient</artifactId>
                 <version>${httpclient.version}</version> <!-- 使用最新版本 -->
             </dependency>
-
 
         </dependencies>
     </dependencyManagement>

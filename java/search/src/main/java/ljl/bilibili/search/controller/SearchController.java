@@ -28,7 +28,8 @@ public class SearchController {
     @Resource
     MysqlToEsHandler mysqlToEsHandler;
     @GetMapping("/test")
-    public Boolean test() throws Exception {
+    public Boolean test() {
+        // 手动触发一次 MySQL→ES 同步（排查用；正常由 @Scheduled 每分钟自动执行）
         mysqlToEsHandler.mysqlToEsHandler();
         return true;
     }

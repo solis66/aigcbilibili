@@ -25,5 +25,3 @@ spring:
     # ⚠️ 宿主 6379 被本机常驻 redis-server 占用，容器 redis 发布在 16379
     #    （见 docker-compose.middleware-host.yml）。写错会静默连到宿主那个 redis 上。
     port: 16379
-  zipkin:
-    base-url: http://127.0.0.1:9411

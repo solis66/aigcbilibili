@@ -22,16 +22,7 @@ spring:
   redis:
     host: redis                                     # 容器名（原 localhost）
   cloud:
-    loadbalancer:
-      enabled: true                                 # 保留（D-01 点名）
-    nacos:
-      discovery:
-        server-addr: nacos:8848                     # 容器名（注：V-1，对当前依赖可能为惰性键）
     gateway:
-      discovery:
-        locator:
-          enabled: true                             # 保留（D-01 点名）
-          lower-case-service-id: true               # 保留（D-01 点名）
       routes:                                       # 列表属性：外置定义整体替换 classpath（D-01 / F-02）
         - id: websocket
           uri: ws://chat:1688
@@ -46,10 +37,10 @@ spring:
           predicates:
             - Path=/ensemble/**,/follow/**,/selfCenter/**,/userInfo/**
         # ---------------------------------------------------------------------
-        # FIX-18（2026-09-23，本机实测新增）：复刻「按服务名自动路由」的语义
-        #   背景：上面 spring.cloud.gateway.discovery.locator.enabled=true 的作用，是把
+        # FIX-18（2026-09-23）：一条显式路由，替代「按服务名自动路由」的语义
+        #   背景：上游原本靠 spring.cloud.gateway.discovery.locator（按服务名自动路由）把
         #     `/<服务名>/**` 自动路由到该服务并去掉前缀。但它依赖 nacos 里有服务注册，
-        #     而本机 `service/list` 实测 **0 个服务**（且 video/search 的源码里 nacos 段是注释掉的）
+        #     而本项目从未真正启用注册中心（v2 起 nacos 已整体移除），该机制恒为空转，
         #     → 该机制整体空转，`/user-center/**` 一律 404（网关自己的 404，不是业务错误）。
         #   依据：这不是前端写错 —— gateway 的 SecurityConfig 第 33 行白名单里明确列了
         #     "/user-center/**"（说明上游线上就是靠 locator 自动生成这条路由），
@@ -59,7 +50,7 @@ spring:
         #       /user-center/ensemble/addOrUpDaterEnsemble                      ← 新建/修改合集
         #       /user-center/selfCenter/getRemotelyLikeVideo/{userId}           ← 最近点赞
         #   处置：用一条显式路由复刻 locator 的行为（Path=/user-center/** + StripPrefix=1），
-        #     等价于 locator 生成的 RewritePath=/user-center/(?<remaining>.*), /${remaining}。
+        #     等价于 locator 原本会生成的 RewritePath=/user-center/(?<remaining>.*), /${remaining}。
         #   判据：`curl http://localhost:8200/user-center/ensemble/getAllVideoInEnsemble/1/1` 由 404 → 200。
         #   缺这条时的症状：前端弹「查看视频合集中的视频失败：接受响应后的错误：」这类**通用**文案
         #     （axios 响应拦截器把真因吞了），看不出是 404 还是别的。
@@ -82,13 +73,6 @@ spring:
           uri: http://search:8201
           predicates:
             - Path=/search/**
-  zipkin:
-    base-url: http://zipkin:9411                    # 容器名（原 localhost）
-    sender:
-      type: web
-  sleuth:
-    sampler:
-      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}  # F-16：默认 0.1 = 原实际行为；设 1 可看全链路
   mail:                                             # 原样保留（D-01 点名；容器化不改邮件配置）
     host: smtp.qq.com
     default-encoding: UTF-8

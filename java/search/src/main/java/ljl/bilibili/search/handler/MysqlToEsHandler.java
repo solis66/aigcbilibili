@@ -1,6 +1,5 @@
 package ljl.bilibili.search.handler;
 
-import com.xxl.job.core.handler.annotation.XxlJob;
 import ljl.bilibili.entity.user_center.user_info.User;
 import ljl.bilibili.mapper.user_center.user_info.UserMapper;
 import ljl.bilibili.search.constant.Constant;
@@ -17,20 +16,31 @@ import org.elasticsearch.client.RequestOptions;
 import org.elasticsearch.client.RestHighLevelClient;
 import org.elasticsearch.common.xcontent.XContentType;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import javax.annotation.Resource;
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 /**
- *MySQL到ES数据同步的定时任务执行器
+ * MySQL 到 ES 的数据同步任务。
+ *
+ * <p>v2（2026-10-25）改造：原来由 xxl-job 的 {@code @XxlJob("mysqlToEs")} 触发，但调度中心里
+ * 从来没有为 search 注册过执行器分组与任务，这条同步链路自部署起一次都没执行过 ——
+ * 表现为 ES 里没有任何索引，搜索页报错、新投稿视频搜不到。
+ * 现改为 Spring {@code @Scheduled}，默认每分钟跑一次，开箱即跑；
+ * 用 Redis SETNX 做跨实例互斥，避免将来多副本部署时重复全量同步。
  */
 @Component
 @Slf4j
 public class MysqlToEsHandler {
+    /** 分布式互斥锁的 key 与过期时间（秒） */
+    private static final String SYNC_LOCK_KEY = "bilibili:search:mysqlToEs:lock";
+    private static final long SYNC_LOCK_SECONDS = 300L;
     @Resource
     RedisTemplate objectRedisTemplate;
     @Resource
@@ -44,8 +54,28 @@ public class MysqlToEsHandler {
     /**
      *同步MySQL数据到ES
      */
-    @XxlJob("mysqlToEs")
-    public void mysqlToEsHandler() throws Exception {
+    @Scheduled(cron = "${bilibili.search.sync-cron:0 0/1 * * * ?}")
+    public void mysqlToEsHandler() {
+        // 跨实例互斥：抢到锁才执行，抢不到说明另一实例正在同步
+        Boolean locked = objectRedisTemplate.opsForValue()
+                .setIfAbsent(SYNC_LOCK_KEY, "1", SYNC_LOCK_SECONDS, TimeUnit.SECONDS);
+        if (!Boolean.TRUE.equals(locked)) {
+            log.debug("mysqlToEs 同步正在其他实例执行，本轮跳过");
+            return;
+        }
+        try {
+            doSync();
+        } catch (Exception e) {
+            log.error("mysqlToEs 同步失败", e);
+        } finally {
+            objectRedisTemplate.delete(SYNC_LOCK_KEY);
+        }
+    }
+
+    /**
+     * 同步主体：首次全量（视频 + 用户），之后按 Redis 队列里的增删改做增量。
+     */
+    private void doSync() throws IOException {
         //查询是否已同步过视频数据，没有的话全量同步视频数据
         if (hasSynchronousVideo == false) {
             mysqlToEsService.videoMysqlToEs();
@@ -85,7 +115,7 @@ public class MysqlToEsHandler {
         //      此后永不刷新 → 新上传的视频必然「不在过滤器里」→ 更新被全部跳过；
         //   ② 跳过之后仍然发出**空的 BulkRequest** → ES 报
         //      ActionRequestValidationException: Validation Failed: 1: no requests added;
-        //      → 任务返回 500（xxl_job_log.handle_code=500）。
+        //      → 任务以异常结束（v2 前表现为 xxl-job 日志里 handle_code=500）。
         //   处置：删掉这套「猜存在性」的机制，update 一律走 upsert（见 mysqlAddToEs）。
         //   判据：xxl_job_log 的 handle_code 不再出现 500。
         //最后再执行更新操作

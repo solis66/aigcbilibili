@@ -18,13 +18,6 @@ spring:
     url: jdbc:mysql://localhost:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
     username: root
     password: user
-  zipkin:
-    base-url: http://localhost:9411
-    sender:
-      type: web
-    sleuth:
-      sampler:
-        probability: 1
   application:
     name: search
 #  cloud:
@@ -34,14 +27,18 @@ spring:
 #logging:
 #  level:
 #    springfox.documentation.spring.web: DEBUG
-xxl:
-  job:
-    admin:
-      addresses: http://localhost:8080/xxl-job-admin
-    accessToken: default_token
-    executor:
-      port: 9916
-      appname: demo-service-impl
-      logpath: /data/applogs/xxl-job/jobhandler
 global-exception-handler:
   enabled: true
+
+# -----------------------------------------------------------------------------
+# 搜索相关度下限与同步任务（v2，2026-10-25）
+#   min-score：ES 的 BM25 分数量级随语料规模变化 —— 空库/小语料时，精确命中标题的文档
+#     score 可能只有 0.3~0.4，若用 1.0 的绝对阈值会被全部滤掉（接口 200 但结果恒空）。
+#     本地默认 0.1 只做「完全不相干」的兜底去噪；语料上千条后应调回接近 1.0。
+#   sync-cron：MySQL→ES 增量同步的触发频率。v2 起由 Spring @Scheduled 驱动
+#     （原 xxl-job 调度中心从未注册过任务，链路自部署起一次都没跑过）。
+# -----------------------------------------------------------------------------
+bilibili:
+  search:
+    min-score: 0.1
+    sync-cron: "0 0/1 * * * ?"

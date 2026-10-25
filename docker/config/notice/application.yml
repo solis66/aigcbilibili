@@ -27,18 +27,6 @@ spring:
     password: user
   redis:
     host: redis                                     # 容器名（原 localhost）
-  cloud:
-    nacos:
-      discovery:
-        server-addr: nacos:8848                     # 容器名
-        register-enabled: true
-  zipkin:
-    base-url: http://zipkin:9411                    # 容器名
-    sender:
-      type: web
-  sleuth:
-    sampler:
-      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
 
 rocketmq:
   name-server: rocketmq-namesrv:9876                # 容器名（原 localhost:9876）

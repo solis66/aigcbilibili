@@ -11,11 +11,9 @@ spring:
   redis:
     host: 127.0.0.1
     port: 16379                       # 见 middleware-host.yml：容器 redis 发布在 16379
-  zipkin:
-    base-url: http://127.0.0.1:9411
 
 minio:
-  url: http://127.0.0.1:9000
+  url: http://127.0.0.1:19000         # 宿主发布端口见 docker/.env 的 MINIO_API_HOST_PORT
 
 rocketmq:
   name-server: 127.0.0.1:9876         # broker 已注册 127.0.0.1（broker.host.conf）

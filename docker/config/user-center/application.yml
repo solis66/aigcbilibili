@@ -22,18 +22,6 @@ spring:
     url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
     username: root
     password: user
-  cloud:
-    nacos:
-      discovery:
-        server-addr: nacos:8848                     # 容器名
-        register-enabled: true
-  zipkin:
-    base-url: http://zipkin:9411                    # 容器名
-    sender:
-      type: web
-  sleuth:
-    sampler:
-      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
 
 module-name: user_center                            # 保留下划线（D-02：与 application.name 不同值）
 

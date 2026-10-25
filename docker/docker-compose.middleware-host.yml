@@ -8,7 +8,7 @@
 #   cd docker
 #   docker compose -f docker-compose.yml -f docker-compose.middleware-host.yml up -d `
 #       mysql redis minio minio-init rocketmq-namesrv rocketmq-store-init rocketmq-broker `
-#       elasticsearch zipkin xxl-job-admin
+#       elasticsearch
 #
 # 设计原则：**不改动 docker-compose.yml**。全套容器模式（README / 本地部署操作手册）
 #           继续原样可用；本文件只做宿主直连所需的 2 处最小打开。
