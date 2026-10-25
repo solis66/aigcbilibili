@@ -22,8 +22,7 @@ https://github.com/user-attachments/assets/109a5b6e-c354-46ef-abf2-14ffede8b725
 ## 技术栈
 - springboot：快速开发Java应用程序
 - security：具备强大的鉴权授权
-- nacos：服务注册与发现
-- openfeign：远程调用服务
+- openfeign：远程调用服务（固定 URL 直连，不依赖注册中心）
 - gateway：请求入口与路由网关
 - redis：跨服务缓存
 - elasticsearch：更快的查询与更高的查询匹配度
@@ -39,9 +38,13 @@ https://github.com/user-attachments/assets/109a5b6e-c354-46ef-abf2-14ffede8b725
 - websocket：实时长连接
 - 讯飞星火api：集成大模型功能
 - jave：视频操作，转码、压缩、截图、去水印等
-- xxl-job：分布式可视化定时任务
-- zipkin：请求链路追踪信息可视化ui
-- slueth：发送请求链路追踪信息
+- spring scheduling + redis 分布式锁：MySQL→ES 增量同步（每分钟，跨实例互斥）
+
+> 已移除的三个组件（2026-10-25，v2）：**nacos**（服务注册发现从未真正启用——所有 Feign
+> 客户端都用固定 URL，注册表里恒为 0 个实例）、**zipkin + sleuth**（唯一消费方是链路追踪 UI，
+> 且采样率配置写错了键）、**xxl-job**（调度中心从未为 search 注册执行器分组与任务，
+> 导致「MySQL→ES」同步自部署起一次都没执行过；已改为 Spring `@Scheduled` + Redis 互斥锁）。
+> 容器从 16 个降为 13 个常驻，功能不减。详见 `docker/README.md` 的「v2 变更记录」。
 
 ## 项目地址
 

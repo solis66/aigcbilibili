@@ -367,3 +367,52 @@ docker stats                            # 实时内存快照（A-12）
 - **后续维护规则**：调大某容器 `-Xmx` 时，须同步确认 `mem_limit ≥ -Xmx × 1.5`；
   每次改动后 `docker stats --no-stream` 复核，**占用率应 <80%**。
 - 完整裁定与理由见 `deliverables/software-company/docker/01-主理人决策.md` 的 **D-08 修订 R1**。
+
+---
+
+## 12. v2 变更记录（2026-10-25）：移除 Nacos / Zipkin+Sleuth / xxl-job
+
+### 12.1 为什么删
+
+这三个组件不是「配置没调好」，而是**从部署第一天起就没有真正工作过**。留着它们，
+面试官问到只能答「有配置、没生效」，比不写更糟；而 xxl-job 的空转直接造成了功能缺陷。
+
+| 组件 | 证据（可 grep） | 后果 |
+|---|---|---|
+| Nacos | `java/common/pom.xml` 里 nacos-discovery 全被注释；6 个模块的 `spring.cloud.nacos.discovery.*` 是未知键，Spring 静默忽略；`java/common/.../client/*` 三个 Feign 客户端全部写死 `url=${service.x.url}`，不走服务发现 | 网关的 `discovery.locator`（按服务名自动路由）恒为空转，`/user-center/**` 长期 404 |
+| Zipkin + Sleuth | `java/common/pom.xml`、`java/user_center/pom.xml` 引入了 sleuth/zipkin；采样率写在**错键** `spring.zipkin.sleuth.sampler` 上，实际生效的一直是 Sleuth 默认 0.1 | 唯一消费方是链路追踪 UI；排障价值可被 logback 日志覆盖 |
+| xxl-job | `xxl_job_group` 里没有 search 执行器分组、`xxl_job_info` 里只有一条停用的 demoJobHandler | **MySQL→ES 同步任务从未执行** → ES 无索引 → 搜索页报错、新视频搜不到 |
+
+### 12.2 改了什么
+
+- **容器**：16 → **13** 个常驻（删掉 nacos、zipkin、xxl-job-admin）；`mem_limit` 合计 12,992MiB → **10,816MiB**。
+- **Nacos**：容器、`NACOS_HOST_PORT`、6 份外置配置 + 6 份 classpath 配置 + 3 份宿主调试配置里的 nacos 段、
+  gateway 的 `discovery.locator`（`/user-center/**` 已有显式路由 + `StripPrefix=1` 兜底）、
+  `@EnableDiscoveryClient`（video）、pom 里的 nacos / ribbon / loadbalancer 依赖与版本属性。
+- **Zipkin + Sleuth**：容器、两个依赖、全部 `spring.zipkin` / `spring.sleuth` 配置段、
+  compose 里 6 处 `ZIPKIN_SAMPLER_PROBABILITY` 注入。
+- **xxl-job**：容器、`docker/mysql/init/03-xxl-job.sql`、`XxlJobConfig`、`xxl.job.*` 配置、
+  `xxl-job-core` 依赖；`MysqlToEsHandler` 改为 Spring `@Scheduled`（默认每分钟）+ Redis SETNX 互斥。
+- **搜索相关度**：`bilibili.search.min-score` 三处配置层（classpath / 容器外置 / 宿主调试）统一为 `0.1`。
+  此前只有容器配置有覆盖，用 IDE 或 jar 直跑时仍是 1.0，空小语料下会把正确命中全部滤掉。
+
+### 12.3 语义变化（升级时注意）
+
+| 项 | v1 | v2 |
+|---|---|---|
+| MySQL→ES 同步触发 | xxl-job 调度中心（实际从未执行） | search 内 `@Scheduled`，默认每分钟，启动后自动跑 |
+| 手动触发同步 | xxl-job 控制台「执行一次」 | `GET /search/test`（或等下一分钟） |
+| 端口 | nacos 18848 / zipkin 9411 / xxl 8080 | **这三个端口不再存在**，其余不变 |
+| `.env` 变量 | 含 `NACOS_HOST_PORT` / `ZIPKIN_*` / `XXL_JOB_*` | 已删除 |
+
+### 12.4 怎么验证改动生效
+
+```bash
+cd docker && docker compose up -d && docker compose ps    # 期望 13 个常驻容器
+curl -s http://localhost:8200/play/getFirstPageVideo/1    # 期望 code=200
+python -c "import urllib.request,urllib.parse;print(urllib.request.urlopen('http://localhost:8200/search/totalKeywordSearch/'+urllib.parse.quote('顺')).read().decode())"
+docker logs search 2>&1 | grep -i scheduling            # 应能看到 @Scheduled 每分钟执行
+```
+
+> 全新库没有任何视频时，搜索会返回 `total_video_num: 0` —— 这不是 bug：ES 索引在第一次写入文档时才创建。
+> 上传一条视频，等一分钟即可搜到。
