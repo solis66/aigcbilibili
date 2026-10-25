@@ -1,0 +1,15 @@
+{
+  "recommendations": [
+    "vscjava.vscode-java-pack",
+    "vmware.vscode-boot-dev-pack",
+    "gabrielbb.vscode-lombok",
+    "Vue.volar",
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "ms-azuretools.vscode-docker",
+    "redhat.vscode-xml",
+    "humao.rest-client",
+    "eamodio.gitlens"
+  ],
+  "unwantedRecommendations": []
+}

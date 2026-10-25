@@ -1,0 +1,45 @@
+{
+  "java.configuration.updateBuildConfiguration": "automatic",
+  "java.compile.nullAnalysis.mode": "disabled",
+  "java.import.maven.enabled": true,
+  "java.maven.downloadSources": true,
+  "spring-boot.ls.problem.application-properties.unknown-property": "ignore",
+  "spring-boot.ls.problem.application-yaml.unknown-property": "ignore",
+  "files.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/.git": true,
+    "**/logs": true
+  },
+  "files.watcherExclude": {
+    "**/target/**": true,
+    "**/node_modules/**": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/node_modules": true,
+    "**/.m2-repo": true,
+    "**/docker/logs": true
+  },
+  "yaml.schemas": {
+    "https://raw.githubusercontent.com/compose-spec/compose-spec/master/schema/compose-spec.json": [
+      "docker/docker-compose*.yml"
+    ]
+  },
+  "[java]": {
+    "editor.tabSize": 4
+  },
+  "[vue]": {
+    "editor.tabSize": 2
+  },
+  "[javascript]": {
+    "editor.tabSize": 2
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  "rest-client.environmentVariables": {
+    "$shared": {
+      "gateway": "http://localhost:8200",
+      "frontend": "http://localhost:2023"
+    }
+  }
+}

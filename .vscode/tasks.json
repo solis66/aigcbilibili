@@ -1,0 +1,72 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "middleware:start",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.yml -f docker-compose.middleware-host.yml up -d mysql redis minio minio-init rocketmq-namesrv rocketmq-store-init rocketmq-broker elasticsearch",
+      "options": {
+        "cwd": "${workspaceFolder}/docker"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "middleware:stop",
+      "type": "shell",
+      "command": "docker compose -f docker-compose.yml -f docker-compose.middleware-host.yml stop",
+      "options": {
+        "cwd": "${workspaceFolder}/docker"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "stack:up",
+      "type": "shell",
+      "command": "docker compose up -d",
+      "options": {
+        "cwd": "${workspaceFolder}/docker"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "stack:down",
+      "type": "shell",
+      "command": "docker compose down",
+      "options": {
+        "cwd": "${workspaceFolder}/docker"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "backend:build",
+      "type": "shell",
+      "command": "mvn -DskipTests package",
+      "options": {
+        "cwd": "${workspaceFolder}/java"
+      },
+      "group": "build",
+      "problemMatcher": [
+        "$msCompile"
+      ]
+    },
+    {
+      "label": "frontend:serve",
+      "type": "shell",
+      "command": "npm run serve",
+      "options": {
+        "cwd": "${workspaceFolder}/vue/labilibili"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "smoke:gateway",
+      "type": "shell",
+      "command": "curl.exe -s -o NUL -w \"%{http_code}\" http://localhost:8200/getFirstPageVideo/1",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

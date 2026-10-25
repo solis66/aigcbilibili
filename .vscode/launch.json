@@ -1,0 +1,85 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "name": "① gateway (8200)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.gateway.GateWayApplication",
+      "projectName": "gateway",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/gateway/",
+      "console": "internalConsole"
+    },
+    {
+      "type": "java",
+      "name": "② notice (30000)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.notice.MessageApplication",
+      "projectName": "notice",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/notice/",
+      "console": "internalConsole"
+    },
+    {
+      "type": "java",
+      "name": "③ user-center (3000)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.user_center.CenterEditApplication",
+      "projectName": "user_center",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/user-center/",
+      "console": "internalConsole"
+    },
+    {
+      "type": "java",
+      "name": "④ video (10201)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.video.VideoApplication",
+      "projectName": "video",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/video/",
+      "console": "internalConsole"
+    },
+    {
+      "type": "java",
+      "name": "⑤ chat (1688)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.chat.ChatApplication",
+      "projectName": "chat",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/chat/",
+      "console": "internalConsole"
+    },
+    {
+      "type": "java",
+      "name": "⑥ search (8201)",
+      "request": "launch",
+      "mainClass": "ljl.bilibili.search.SearchApplication",
+      "projectName": "search",
+      "cwd": "${workspaceFolder}/docker/local-run",
+      "vmArgs": "-Duser.home=${workspaceFolder}/docker/local-run/.home -Dfile.encoding=UTF-8",
+      "args": "--spring.config.additional-location=file:./conf/search/",
+      "console": "internalConsole"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "全部后端（6 个）",
+      "configurations": [
+        "① gateway (8200)",
+        "② notice (30000)",
+        "③ user-center (3000)",
+        "④ video (10201)",
+        "⑤ chat (1688)",
+        "⑥ search (8201)"
+      ],
+      "stopAll": true
+    }
+  ]
+}
