@@ -1,0 +1,69 @@
+# =============================================================================
+# search 外置配置 → 容器内 /app/config/application.yml
+# 依据 D-01：零源码改动，file:./config/ 逐属性覆盖 classpath。本服务无 profile 分层 → 文件名 application.yml
+# 注：search 源码中 spring.cloud.nacos 段为注释状态，不外置（架构 §4.7）
+# 完整键集；逐键对照表见《Docker架构设计》§4.7
+# =============================================================================
+server:
+  port: 8201
+  tomcat:
+    connection-timeout: 300000                      # 保留原值
+
+spring:
+  application:
+    name: search
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    name: datasource
+    url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: user
+  redis:
+    host: redis                                     # 容器名（原 localhost）
+  zipkin:
+    base-url: http://zipkin:9411                    # 容器名
+    sender:
+      type: web
+  sleuth:
+    sampler:
+      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
+
+elasticsearch-client:
+  hosts: http://elasticsearch:9200                  # 容器名（原 localhost:9200；D-10 客户端锁 7.13.3）
+
+xxl:
+  job:
+    admin:
+      addresses: http://xxl-job-admin:8080/xxl-job-admin   # 容器名（原 localhost:8080）
+    accessToken: default_token                      # 与 admin 侧一致（D-13）
+    executor:
+      port: 9916                                    # 保留；仅内部 expose
+      appname: demo-service-impl                    # 与 admin 注册名一致
+      logpath: /data/applogs/xxl-job/jobhandler     # 可选 bind 卷（架构 §3 #12）
+
+module-name: search                                 # 日志路径用
+global-exception-handler:
+  enabled: true
+
+# -----------------------------------------------------------------------------
+# 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）
+#   MyMetaObjectHandler 在 java/common，被 6 个服务统一 @ComponentScan("ljl.*") 扫到，
+#   故 6 份外置配置统一口径，避免任何服务写出不可达 URL。
+# -----------------------------------------------------------------------------
+bilibili:
+  user:
+    default-cover: http://localhost:2023/user-cover/default.png
+  # ---------------------------------------------------------------------------
+  # 搜索相关度下限（FIX-19，2026-09-23 本机实测新增）
+  #   源码 SearchServiceImpl 有 3 处 minScore（totalKeywordSearch 的视频/用户两条
+  #   + videoPageKeywordSearch），原为写死字面量 1.0f。
+  #   问题：ES 的 BM25 分数量级随索引规模变化 —— 本机 ES 只有 1 条视频时，
+  #   「顺德」精确命中「顺德一日行」的 score 只有 0.36，被 >1.0 的绝对阈值滤掉，
+  #   于是搜索恒返回 0 条（且接口返回 200，看不出是阈值问题）。
+  #   已参数化为 ${bilibili.search.min-score:1.0}，默认值不变（上游线上行为不变），
+  #   本机小数据集覆盖为 0.1（只做「完全不相干」的兜底去噪）。
+  #   ⚠️ 语料变大后（几百条以上）应调回接近 1.0，否则搜索噪声会变多。
+  #   判据：改前 curl 该接口 total_video_num=0；改后能搜到上传的视频。
+  # ---------------------------------------------------------------------------
+  search:
+    min-score: 0.1

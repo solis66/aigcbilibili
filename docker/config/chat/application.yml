@@ -1,0 +1,79 @@
+# =============================================================================
+# chat 外置配置 → 容器内 /app/config/application.yml
+# 依据 D-01：file:./config/ 逐属性覆盖 classpath。本服务无 profile 分层 → 文件名 application.yml
+# ⚠️ D-01 修订 R1（2026-09-22）：java/common 里 3 处 Feign url 已参数化 → 本文件新增 service: 段
+# 注：chat 源码里没有 global-exception-handler 键，不凭空添加（架构 §4.6）
+# 完整键集；逐键对照表见《Docker架构设计》§4.6
+# =============================================================================
+server:
+  port: 1688                                       # WebSocket 端口，nginx /wschat 上游
+
+spring:
+  application:
+    name: chat
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    name: datasource
+    url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: user
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos:8848                     # ⚠️ 原值为 127.0.0.1:8848（与其他模块不一致），改为容器名（D-01）
+        register-enabled: true
+  zipkin:
+    base-url: http://zipkin:9411                    # 容器名
+    sender:
+      type: web
+  sleuth:
+    sampler:
+      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
+
+module-name: chat                                   # 日志路径用
+
+# -----------------------------------------------------------------------------
+# 服务间调用地址（Feign 客户端 url 的占位符，见 java/common/.../client/）
+# 容器内必须写容器名：容器里的 localhost 指自己，写死会 Connection refused
+# 宿主直跑无需配置 —— 注解里的默认值就是 http://localhost:<port>
+# -----------------------------------------------------------------------------
+service:
+  notice:
+    url: http://notice:30000                        # WebSocketHandler 发私聊消息时通知 notice
+
+# -----------------------------------------------------------------------------
+# 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）
+#   MyMetaObjectHandler 在 java/common，被 6 个服务统一 @ComponentScan("ljl.*") 扫到，
+#   故 6 份外置配置统一口径，避免任何服务写出不可达 URL。
+# -----------------------------------------------------------------------------
+bilibili:
+  user:
+    default-cover: http://localhost:2023/user-cover/default.png
+
+# -----------------------------------------------------------------------------
+# 讯飞星火（FIX-22，2026-09-23：凭据外置化）
+#   本文件是容器内 /app/config/application.yml（bind 挂载，只读），逐属性覆盖 classpath。
+#   与 classpath 版同口径：只放占位符，真实值来自 docker/.env
+#   → compose 的 chat.environment（SPARK_CHAT_APP_ID / _API_KEY / _API_SECRET）→ 容器环境变量。
+#   ⚠️ 本文件**未**被 gitignore 保护，所以这里绝不能出现真实密钥（这是选 docker/.env 的原因）。
+#   ⚠️ 对话(v3.5)、TTI 文生图、AIPPT 在讯飞是三个独立服务与计费；
+#      tti / aippt 未单独配置时回落复用 chat 凭据，与改造前行为一致。
+# -----------------------------------------------------------------------------
+spark:
+  chat:
+    host-url: "${SPARK_CHAT_HOST_URL:wss://spark-api.xf-yun.com/v3.5/chat}"
+    domain: "${SPARK_CHAT_DOMAIN:generalv3.5}"
+    app-id: "${SPARK_CHAT_APP_ID:}"
+    api-key: "${SPARK_CHAT_API_KEY:}"
+    api-secret: "${SPARK_CHAT_API_SECRET:}"
+  tti:
+    host-url: "${SPARK_TTI_HOST_URL:https://spark-api.cn-huabei-1.xf-yun.com/v2.1/tti}"
+    domain: "${SPARK_TTI_DOMAIN:s291394db}"
+    app-id: "${SPARK_TTI_APP_ID:${SPARK_CHAT_APP_ID:}}"
+    api-key: "${SPARK_TTI_API_KEY:${SPARK_CHAT_API_KEY:}}"
+    api-secret: "${SPARK_TTI_API_SECRET:${SPARK_CHAT_API_SECRET:}}"
+  aippt:
+    host-url: "${SPARK_AIPPT_HOST_URL:https://zwapi.xfyun.cn}"
+    app-id: "${SPARK_AIPPT_APP_ID:${SPARK_CHAT_APP_ID:}}"
+    api-key: "${SPARK_AIPPT_API_KEY:${SPARK_CHAT_API_KEY:}}"
+    api-secret: "${SPARK_AIPPT_API_SECRET:${SPARK_CHAT_API_SECRET:}}"

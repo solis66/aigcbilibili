@@ -1,0 +1,70 @@
+# =============================================================================
+# user-center 外置配置 → 容器内 /app/config/application.yml
+# 依据 D-01：file:./config/ 逐属性覆盖 classpath。本服务无 profile 分层 → 文件名 application.yml
+# ⚠️ D-01 修订 R1（2026-09-22）：java/common 里 3 处 Feign url 已参数化 → 本文件新增 service: 段
+# ⚠️ D-02：服务名/DNS 用连字符 user-center（= spring.application.name）；
+#          module-name 用下划线 user_center（仅日志路径用）。二者不可互换。
+# 完整键集；逐键对照表见《Docker架构设计》§4.4
+# =============================================================================
+server:
+  port: 3000
+
+spring:
+  application:
+    name: user-center                               # 保留连字符（D-02）
+  servlet:
+    multipart:
+      max-file-size: 10MB                           # 保留（D-01 点名）
+      max-request-size: 10MB                        # 保留（D-01 点名）
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    name: datasource
+    url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: user
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos:8848                     # 容器名
+        register-enabled: true
+  zipkin:
+    base-url: http://zipkin:9411                    # 容器名
+    sender:
+      type: web
+  sleuth:
+    sampler:
+      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
+
+module-name: user_center                            # 保留下划线（D-02：与 application.name 不同值）
+
+minio:
+  url: http://minio:9000                            # 容器名（原 localhost:9000）
+  access.name: minioadmin
+  access.secret: minioadmin
+  bucket.name: user-cover                           # 与 minio-init 建桶一致（F-12）
+  # FIX-13（2026-09-23 本机实测新增）：UserInfoServiceImpl 的 filePath 已参数化。
+  #   原为字面量 "https://labilibili.com/" → 本地部署时「修改信息」上传头像写库后立刻 404 破图。
+  #   ⚠️ 末尾斜杠必须保留：下游拼接语义是 filePath + bucketName + "/" + coverName。
+  #   前缀指向本地前端入口，/user-cover/ 由 nginx 反代到 minio。
+  file-path: http://localhost:2023/
+
+global-exception-handler:
+  enabled: true
+
+# -----------------------------------------------------------------------------
+# 服务间调用地址（Feign 客户端 url 的占位符，见 java/common/.../client/）
+# 容器内必须写容器名：容器里的 localhost 指自己，写死会 Connection refused
+# 宿主直跑无需配置 —— 注解里的默认值就是 http://localhost:<port>
+# -----------------------------------------------------------------------------
+service:
+  notice:
+    url: http://notice:30000                        # UserInfoServiceImpl 改资料后发通知给 notice
+
+# -----------------------------------------------------------------------------
+# 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）
+#   MyMetaObjectHandler 在 java/common，被 6 个服务统一 @ComponentScan("ljl.*") 扫到，
+#   故 6 份外置配置统一口径，避免任何服务写出不可达 URL。
+# -----------------------------------------------------------------------------
+bilibili:
+  user:
+    default-cover: http://localhost:2023/user-cover/default.png

@@ -1,0 +1,77 @@
+# =============================================================================
+# notice 外置配置 → 容器内 /app/config/application.yml
+# 依据 D-01：file:./config/ 逐属性覆盖 classpath。本服务无 profile 分层 → 文件名 application.yml
+# ⚠️ D-01 修订 R1（2026-09-22）：java/common 里 3 处 Feign url 已参数化 → 本文件新增 service: 段
+# 完整键集；逐键对照表见《Docker架构设计》§4.3
+# =============================================================================
+server:
+  port: 30000
+
+spring:
+  application:
+    name: notice
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 500MB                          # 保留（D-01 点名；漏则大小上限失效）
+      max-request-size: 500MB                       # 保留（D-01 点名）
+      location: /path                               # 保留原值（绝对路径，见架构 §10 R-4）
+  mvc:
+    pathmatch:
+      matching-strategy: ant_path_matcher           # 保留（D-01 点名；漏则 + springfox 启动失败）
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    name: datasource
+    url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: user
+  redis:
+    host: redis                                     # 容器名（原 localhost）
+  cloud:
+    nacos:
+      discovery:
+        server-addr: nacos:8848                     # 容器名
+        register-enabled: true
+  zipkin:
+    base-url: http://zipkin:9411                    # 容器名
+    sender:
+      type: web
+  sleuth:
+    sampler:
+      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
+
+rocketmq:
+  name-server: rocketmq-namesrv:9876                # 容器名（原 localhost:9876）
+  producer:
+    group: test                                     # 保留原值
+
+module-name: notice                                 # 日志路径用
+global-exception-handler:
+  enabled: true
+
+# -----------------------------------------------------------------------------
+# 服务间调用地址（Feign 客户端 url 的占位符，见 java/common/.../client/）
+# 容器内必须写容器名：容器里的 localhost 指自己，写死会 Connection refused
+# 宿主直跑无需配置 —— 注解里的默认值就是 http://localhost:<port>
+# -----------------------------------------------------------------------------
+service:
+  video:
+    url: http://video:10201                         # notice 的 VideoEncodeConsumer 调 video
+
+# -----------------------------------------------------------------------------
+# 浏览器可见的 minio 对象基地址（FIX-14，2026-09-23 本机实测新增）
+#   消费方：notice/consumer/video_encode/VideoEncodeConsumer —— 「投稿未带封面」分支里
+#   截帧得到的封面会被写进 video.cover 与 dynamic.video_cover，前端直接当 <img :src> 用。
+#   源码默认值是作者线上域名 https://labilibili.com/，本地不可达 → 改成走前端入口。
+# -----------------------------------------------------------------------------
+minio:
+  file-path: http://localhost:2023/
+
+# -----------------------------------------------------------------------------
+# 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）
+#   MyMetaObjectHandler 在 java/common，被 6 个服务统一 @ComponentScan("ljl.*") 扫到，
+#   故 6 份外置配置统一口径，避免任何服务写出不可达 URL。
+# -----------------------------------------------------------------------------
+bilibili:
+  user:
+    default-cover: http://localhost:2023/user-cover/default.png

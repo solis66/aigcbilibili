@@ -1,0 +1,51 @@
+# =============================================================================
+# Dockerfile.dockerignore —— 仅作用于 docker/frontend/Dockerfile 的构建上下文过滤
+# 目的（FIX-3）：前端构建的 context = 仓库根（..），默认会把 318MB 的 .m2-repo/ 一并送进
+#   构建上下文，显著拖慢构建。BuildKit 会在 Dockerfile 同目录优先读取 <Dockerfile>.dockerignore
+#   并**取代**根 .dockerignore —— 故本文件 = 根 .dockerignore 内容 + 额外排除 .m2-repo/，
+#   把 318MB 挡在前端上下文之外。
+# 为何不把 context 直接收窄到 ../vue/labilibili：那样 Dockerfile 就取不到
+#   docker/frontend/nginx.conf（它在 context 之外）。故用本文件的等价隔离手段达成同一目的。
+# 安全前提：前端 Dockerfile 仅 COPY vue/labilibili/** 与 docker/frontend/nginx.conf，
+#   下列排除项均不涉及这两者。
+# =============================================================================
+
+# ---- 版本控制 / IDE ----
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+**/*.iml
+
+# ---- WorkBuddy / 交付物 / 文档 ----
+.workbuddy/
+deliverables/
+docs/
+*.md
+
+# ---- 即将退场的旧虚拟环境与脚本 ----
+env/
+scripts/
+
+# ---- Maven 依赖种子：前端构建完全不需要，排除以缩小上下文（FIX-3 核心）----
+.m2-repo/
+
+# ---- 构建产物 ----
+target/
+**/target/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# ---- Docker 运行时产物 ----
+logs/
+docker/logs/
+docker/data/
+
+# ---- 运行时 / 临时文件 ----
+.DS_Store
+Thumbs.db
+*.log
+*.tmp

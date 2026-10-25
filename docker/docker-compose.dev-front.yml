@@ -1,0 +1,44 @@
+# =============================================================================
+# docker-compose.dev-front.yml —— 前端 webpack dev server 变体（可选，profiles: [dev]）
+# 用途：保留「行为与原来一致」的 dev server（热更新），替代默认的生产 nginx 形态。
+# 内存：dev server 约 1.5GB（生产 nginx 约 64MB），16GB 机器慎用（Q2 / D-15）。
+#
+# 用法（与主编排叠加，显式启动本服务）：
+#   cd docker
+#   docker compose -f docker-compose.yml -f docker-compose.dev-front.yml --profile dev up -d frontend-dev
+#   # 访问 http://localhost:2024 （dev 端口，避免与生产 frontend 的 2023 冲突）
+#
+# 说明：node 容器内执行 yarn serve --host 0.0.0.0（vue.config.js 写死 host:localhost，用 CLI 参数覆盖，
+#       不改源码）；VUE_APP_API_TARGET/VUE_APP_WS_TARGET 指向容器网关与 chat（等价上一轮虚拟环境方案的前端启动脚本行为）。
+# =============================================================================
+
+name: aigcbilibili
+
+services:
+  frontend-dev:
+    image: node:16.20.2-alpine
+    profiles: ["dev"]
+    container_name: labilibili-front-dev
+    working_dir: /app
+    environment:
+      VUE_APP_API_TARGET: http://gateway:8200
+      VUE_APP_WS_TARGET: http://chat:1688
+      # Node 16 + webpack 4 无需 --openssl-legacy-provider（D-05）
+    volumes:
+      - ../vue/labilibili:/app
+      # 容器内 node_modules 独立卷，避免污染宿主源码目录
+      - frontend-dev-node-modules:/app/node_modules
+    command: >
+      sh -c "yarn install --frozen-lockfile || npm install --legacy-peer-deps;
+             yarn serve --host 0.0.0.0 --port 2023 --disable-host-check"
+    ports:
+      - "${FRONTEND_DEV_HOST_PORT:-2024}:2023"
+    depends_on:
+      gateway:
+        condition: service_started
+    networks:
+      - bilibili-net
+    restart: unless-stopped
+
+volumes:
+  frontend-dev-node-modules:

@@ -1,0 +1,78 @@
+# =============================================================================
+# video 外置配置 → 容器内 /app/config/application.yml
+# 依据 D-01：file:./config/ 逐属性覆盖 classpath。本服务无 profile 分层 → 文件名 application.yml
+# ⚠️ D-01 修订 R1（2026-09-22）：java/common 里 3 处 Feign url 已参数化 → 本文件新增 service: 段
+# 注：video 源码中 spring.cloud.nacos 段为注释状态，不外置（架构 §4.5）
+# 完整键集；逐键对照表见《Docker架构设计》§4.5
+# =============================================================================
+server:
+  port: 10201
+
+spring:
+  application:
+    name: video
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 150MB                          # 保留（D-01 点名；漏则上传失败）
+      max-request-size: 350MB                       # 保留（D-01 点名）
+      location: var/temp                            # 保留相对路径；worker 内为 /app/var/temp（Dockerfile 已 mkdir）
+  datasource:
+    type: com.alibaba.druid.pool.DruidDataSource
+    name: datasource
+    url: jdbc:mysql://mysql:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+    username: root
+    password: user
+  redis:
+    host: redis                                     # 容器名（原 localhost）
+  zipkin:
+    base-url: http://zipkin:9411                    # 容器名
+    sender:
+      type: web
+  sleuth:
+    sampler:
+      probability: ${ZIPKIN_SAMPLER_PROBABILITY:-0.1}
+
+minio:
+  url: http://minio:9000                            # 容器名
+  access.name: minioadmin
+  access.secret: minioadmin
+  # ---------------------------------------------------------------------------
+  # FIX-14（2026-09-23 本机实测新增）：**浏览器可见**的对象基地址
+  #   消费方：UploadAndEditServiceImpl.uploadTotal —— 写进 video.url / video.cover，
+  #   前端把它当 <video :src> / <img :src> 直接用，所以必须是宿主浏览器能访问的地址，
+  #   而不是容器内地址。源码默认值 http://localhost:9000/ 在本地既不是 minio 的发布端口
+  #   （本机为 19000），也不该让浏览器直连 S3 API 端口 → 视频播不出来、封面破图。
+  #   改走前端入口，由 nginx 的 location ^~ /video/ 与 ^~ /video-cover/ 反代到 minio。
+  #   ⚠️ 与上面的 minio.url 是两回事：那个是服务端 S3 客户端用的，必须写容器名。
+  # ---------------------------------------------------------------------------
+  file-path: http://localhost:2023/
+
+rocketmq:
+  name-server: rocketmq-namesrv:9876                # 容器名（原 localhost:9876）
+  producer:
+    group: producer                                 # 保留原值
+
+module-name: video                                  # 日志路径用
+global-exception-handler:
+  enabled: true
+
+# -----------------------------------------------------------------------------
+# 服务间调用地址（Feign 客户端 url 的占位符，见 java/common/.../client/）
+# 容器内必须写容器名：容器里的 localhost 指自己，写死会 Connection refused
+# 宿主直跑无需配置 —— 注解里的默认值就是 http://localhost:<port>
+# -----------------------------------------------------------------------------
+service:
+  notice:
+    url: http://notice:30000                        # video 的上传/点赞/弹幕/评论/收藏都发通知给 notice
+  search:
+    url: http://search:8201                         # video 的 PlayServiceImpl 取推荐视频
+
+# -----------------------------------------------------------------------------
+# 新用户默认头像 URL（FIX-13，2026-09-23 本机实测新增）
+#   MyMetaObjectHandler 在 java/common，被 6 个服务统一 @ComponentScan("ljl.*") 扫到，
+#   故 6 份外置配置统一口径，避免任何服务写出不可达 URL。
+# -----------------------------------------------------------------------------
+bilibili:
+  user:
+    default-cover: http://localhost:2023/user-cover/default.png

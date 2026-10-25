@@ -1,0 +1,17 @@
+# =============================================================================
+# user-center —— 混合模式（应用在宿主、中间件在 Docker）本地覆盖
+# 用法： .\run-backend.ps1 -Service user-center
+# ⚠️ 目录名/服务名用连字符 user-center，Maven 模块名用下划线 user_center（D-02）
+# =============================================================================
+spring:
+  datasource:
+    url: jdbc:mysql://127.0.0.1:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+  zipkin:
+    base-url: http://127.0.0.1:9411
+  cloud:
+    nacos:
+      discovery:
+        server-addr: 127.0.0.1:8848   # 惰性键（V-1）
+
+minio:
+  url: http://127.0.0.1:9000          # 容器模式为 http://minio:9000

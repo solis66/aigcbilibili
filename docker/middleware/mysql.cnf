@@ -1,0 +1,19 @@
+# =============================================================================
+# mysql.cnf —— 迁移自上一轮虚拟环境方案的 MySQL 配置（Windows my.ini），并 Linux 化
+# 移除项：basedir / datadir（容器内由镜像与命名卷 mysql-data 管理，绝对 Windows 路径无意义）
+# 保留项：字符集/排序规则、时区、存储引擎、缓冲池、最大连接数（与上游语义一致）
+# 挂载点：mysql 容器的 /etc/mysql/conf.d/（镜像默认 my.cnf 会 !includedir 该目录）
+# 依据：与 01-schema.sql 的 utf8mb4_general_ci 口径一致（D-10：MySQL 锁 5.7，勿用 8.0）
+# =============================================================================
+[mysqld]
+port=3306
+character-set-server=utf8mb4
+collation-server=utf8mb4_general_ci
+default-time-zone='+08:00'
+default-storage-engine=INNODB
+innodb_buffer_pool_size=256M
+max_connections=200
+
+[client]
+port=3306
+default-character-set=utf8mb4

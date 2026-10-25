@@ -1,0 +1,42 @@
+# =============================================================================
+# docker-compose.middleware-host.yml —— 「中间件在 Docker、应用在宿主」混合模式 override
+#
+# 用途：把中间件起在 Docker 里，6 个 Spring Boot 后端与 Vue 前端跑在 Windows 宿主上
+#       （IDE 里点运行 / npm run serve），方便断点调试与热更新。
+#
+# 用法（只起中间件，**不要**带上 gateway/notice/... 这些后端服务）：
+#   cd docker
+#   docker compose -f docker-compose.yml -f docker-compose.middleware-host.yml up -d `
+#       mysql redis minio minio-init rocketmq-namesrv rocketmq-store-init rocketmq-broker `
+#       elasticsearch zipkin xxl-job-admin
+#
+# 设计原则：**不改动 docker-compose.yml**。全套容器模式（README / 本地部署操作手册）
+#           继续原样可用；本文件只做宿主直连所需的 2 处最小打开。
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # 打开项 1：把 redis 发布到宿主
+  #
+  # docker-compose.yml 里 redis **故意不发布**宿主端口 —— 因为宿主 6379 已被本机常驻
+  # redis-server 占用（D-11，实测该进程 PING 返回 +PONG），映射 6379 会让 up 整体失败。
+  # 混合模式下后端跑在宿主，必须能从宿主连上容器 redis，故发布到 **16379**。
+  #   ⚠️ 16379 这个端口号要同时写进 docker/local-run/config/*/application.yml
+  #      （spring.redis.port），两处不一致会导致后端连到宿主那个 redis 上去。
+  # ---------------------------------------------------------------------------
+  redis:
+    ports:
+      - "${REDIS_HOST_PORT:-16379}:6379"
+
+  # ---------------------------------------------------------------------------
+  # 打开项 2：让 broker 向客户端注册「宿主能连上的地址」
+  #
+  # 通过覆盖 command 指向另一份配置（broker.host.conf，唯一差异 brokerIP1=127.0.0.1）。
+  # 之所以用「换 command + 新增一个挂载点」而不是直接覆盖 broker.conf 的挂载：
+  #   compose 对 volumes 是**追加合并**，若两条挂载指向同一个容器内路径，
+  #   Docker 会因「Duplicate mount point」直接报错起不来。改指新文件最干净。
+  # ---------------------------------------------------------------------------
+  rocketmq-broker:
+    command: sh mqbroker -c /home/rocketmq/broker.host.conf
+    volumes:
+      - ./middleware/broker.host.conf:/home/rocketmq/broker.host.conf:ro

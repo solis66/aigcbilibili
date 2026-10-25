@@ -1,0 +1,29 @@
+# =============================================================================
+# gateway —— 混合模式（应用在宿主、中间件在 Docker）本地覆盖
+#
+# 用法（工作目录 = 本目录的上一级 docker/local-run/）：
+#   java -jar ../../java/gateway/target/gateway-1.0.jar ^
+#        --spring.config.additional-location=file:./config/gateway/
+#   或直接用脚本： .\run-backend.ps1 -Service gateway
+#
+# 文件名为什么是 application-dev.yml：gateway 的 classpath 只有一行
+#   spring.profiles.active: dev，路由/数据源全在 application-dev.yml 里。
+#   放在 additional-location 目录里用同名文件，才能保证「同位置、profile 优先」，
+#   不会出现「外部的 application.yml 与 jar 内的 application-dev.yml 谁赢」的歧义。
+#
+# 本文件**只写与 classpath 默认值不同的键**，其余（含 routes 路由表）沿用 classpath。
+# classpath 里的路由本来就指向 localhost:30000 / :3000 / :10201 / :1688 / :8201，
+# 与「后端全在宿主」的拓扑天然一致，故路由一律不动。
+# =============================================================================
+spring:
+  datasource:
+    # 容器模式里这里是 mysql:3306（容器名）；宿主进程要改成 127.0.0.1
+    # 用 127.0.0.1 而不是 localhost：Windows 上 localhost 可能先解析到 IPv6 ::1
+    url: jdbc:mysql://127.0.0.1:3306/bilibili?useUnicode=true&allowPublicKeyRetrieval=true&characterEncoding=UTF-8&useSSL=false&serverTimezone=GMT%2B8
+  redis:
+    host: 127.0.0.1
+    # ⚠️ 宿主 6379 被本机常驻 redis-server 占用，容器 redis 发布在 16379
+    #    （见 docker-compose.middleware-host.yml）。写错会静默连到宿主那个 redis 上。
+    port: 16379
+  zipkin:
+    base-url: http://127.0.0.1:9411

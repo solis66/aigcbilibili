@@ -1,0 +1,42 @@
+# =============================================================================
+# .dockerignore — 构建上下文过滤（D-06 硬要求）
+# 构建上下文 = 项目根目录（compose 的 build.context 指向 docker/ 的上一级）
+# 重要：本文件**不得**排除 .m2-repo/（D-04/D-06：317.8MB 依赖种子必须在上下文中）
+# =============================================================================
+
+# ---- 版本控制 / IDE ----
+.git/
+.gitignore
+.gitattributes
+.idea/
+.vscode/
+**/*.iml
+
+# ---- WorkBuddy 工作区 / 历史交付物 / 文档 ----
+.workbuddy/
+deliverables/
+docs/
+*.md
+
+# ---- 即将退场的旧虚拟环境与脚本（排除以免污染上下文；本次不删除目录）----
+env/
+scripts/
+
+# ---- 构建产物 ----
+target/
+**/target/
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+
+# ---- Docker 运行时产物 ----
+logs/
+docker/logs/
+docker/data/
+
+# ---- 运行时 / 临时文件 ----
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
