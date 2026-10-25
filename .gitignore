@@ -10,6 +10,8 @@
 !.vscode/launch.json
 !.vscode/tasks.json
 !.vscode/settings.json
+# VS Code 自动生成的工作区文件（内容与 .vscode/settings.json 重复）
+*.code-workspace
 
 # ---- 构建产物 ----
 target/

@@ -2,7 +2,7 @@
   "recommendations": [
     "vscjava.vscode-java-pack",
     "vmware.vscode-boot-dev-pack",
-    "gabrielbb.vscode-lombok",
+    "vscjava.vscode-lombok",
     "Vue.volar",
     "dbaeumer.vscode-eslint",
     "esbenp.prettier-vscode",

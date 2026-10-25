@@ -143,7 +143,7 @@
 | `vscjava.vscode-java-pack` | Java 语言支持（含 Maven、调试、测试） |
 | `vmware.vscode-boot-dev-pack` | Spring Boot 专属（application.yml 补全、Bean 跳转） |
 | `redhat.java` / `vscjava.vscode-maven` | 由上面两个 pack 带入 |
-| `gabrielbb.vscode-lombok` | 本项目大量 `@Data`/`@Slf4j` |
+| `vscjava.vscode-lombok` | 本项目大量 `@Data`/`@Slf4j` |
 | `Vue.volar` | Vue 3 单文件组件 |
 | `dbaeumer.vscode-eslint` | 前端 lint（项目已配 eslintConfig） |
 | `ms-azuretools.vscode-docker` | 看容器/日志/一键 compose |
