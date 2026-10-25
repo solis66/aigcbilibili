@@ -1,0 +1,57 @@
+# =============================================================================
+# aigcbilibili .gitignore
+# =============================================================================
+
+# ---- IDE ----
+.idea/
+*.iml
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/settings.json
+
+# ---- 构建产物 ----
+target/
+**/target/
+dist/
+**/dist/
+
+# ---- 依赖 ----
+node_modules/
+**/node_modules/
+
+# ---- 运行日志（各服务 logback 会往这些目录写）----
+logs/
+**/logs/
+java/*/logs/
+
+# ---- 本地环境变量 / 凭据 ----
+.env
+docker/.env
+
+# ---- Docker 运行时产物（日志 / 可选绑定数据目录）----
+docker/logs/
+docker/data/
+
+# ---- Docker 资产：Maven 本地仓库种子（326MB，不入库）----
+# 仅放行占位说明：docker/backend/Dockerfile 有 `COPY .m2-repo/`，该目录必须存在，
+# 否则从仓库/源码包首次构建会在 COPY 一步直接失败（分发修复 FIX-15）。
+.m2-repo/*
+!.m2-repo/PLEASE_READ.txt
+
+# ---- 个人材料（公开仓库不应包含简历 / 面试材料 / 图表产物）----
+deliverables/
+.archify/
+.Asu/
+.workbuddy/
+prompts/
+
+# ---- WorkBuddy 工作区数据（本地记忆/任务，不入版本库）----
+/.workbuddy/
+
+# ---- 系统 / 临时文件 ----
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
